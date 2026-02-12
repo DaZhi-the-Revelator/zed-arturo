@@ -1,0 +1,10 @@
+target/
+Cargo.lock
+node_modules/
+*.log
+.DS_Store
+extension.wasm
+grammars/
+src/lib.rs.backup
+language-server/bundle.js
+language-server/node_modules/

@@ -1,0 +1,44 @@
+name = "Arturo"
+grammar = "arturo"
+path_suffixes = ["art"]
+line_comments = [";"]
+block_comment = ["", ""]
+autoclose_before = ";:.,=}])\n\t "
+
+# Word pattern - includes hyphens and optional ? suffix for Arturo identifiers
+# Examples: my-var, contains?, prime?
+word_characters = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "_", "-", "?"]
+
+# Enable language server
+language_servers = ["arturo-lsp"]
+
+# Auto-closing bracket pairs
+brackets = [
+  { start = "{", end = "}", close = true, newline = true },
+  { start = "[", end = "]", close = true, newline = true },
+  { start = "(", end = ")", close = true, newline = false },
+  { start = "\"", end = "\"", close = true, newline = false },
+  { start = "««", end = "»»", close = true, newline = false },
+  { start = "{:", end = ":}", close = true, newline = false },
+  { start = "«", end = "»", close = true, newline = false },
+  { start = "|", end = "|", close = true, newline = false },
+]
+
+# Indentation rules for Arturo
+indent = { tab_size = 4, unit = "    " }
+
+# Outline/symbol icons for breadcrumbs and outline view
+# Maps LSP SymbolKind to Zed icons
+outline = { symbols = [
+  { kind = "Function", icon = "function", label_type = "code" },
+  { kind = "Variable", icon = "variable", label_type = "code" },
+  { kind = "Constant", icon = "constant", label_type = "code" },
+  { kind = "String", icon = "string", label_type = "code" },
+  { kind = "Number", icon = "number", label_type = "code" },
+  { kind = "Boolean", icon = "boolean", label_type = "code" },
+  { kind = "Array", icon = "array", label_type = "code" },
+  { kind = "Object", icon = "object", label_type = "code" },
+  { kind = "Key", icon = "key", label_type = "code" },
+  { kind = "Field", icon = "field", label_type = "code" },
+  { kind = "Method", icon = "method", label_type = "code" },
+]}

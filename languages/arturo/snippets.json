@@ -1,0 +1,128 @@
+{
+  "if statement": {
+    "prefix": "if",
+    "body": ["if ${1:condition} [", "    ${2:// code}", "]"],
+    "description": "If statement"
+  },
+  "if-else statement": {
+    "prefix": "ifelse",
+    "body": [
+      "if ${1:condition} [",
+      "    ${2:// if true}",
+      "]",
+      "else [",
+      "    ${3:// if false}",
+      "]"
+    ],
+    "description": "If-else statement"
+  },
+  "unless statement": {
+    "prefix": "unless",
+    "body": ["unless ${1:condition} [", "    ${2:// code}", "]"],
+    "description": "Unless statement"
+  },
+  "when statement": {
+    "prefix": "when",
+    "body": ["when ${1:condition} -> ${2:value}"],
+    "description": "When statement"
+  },
+  "while loop": {
+    "prefix": "while",
+    "body": ["while [${1:condition}] [", "    ${2:// code}", "]"],
+    "description": "While loop"
+  },
+  "loop": {
+    "prefix": "loop",
+    "body": ["loop ${1:collection} '${2:item} [", "    ${3:// code}", "]"],
+    "description": "Loop over collection"
+  },
+  "function definition": {
+    "prefix": "func",
+    "body": [
+      "${1:functionName}: function [${2:params}][",
+      "    ${3:// code}",
+      "]"
+    ],
+    "description": "Function definition"
+  },
+  "typed function": {
+    "prefix": "tfunc",
+    "body": [
+      "${1:functionName}: function [${2:param}:${3:type}][",
+      "    ${4:// code}",
+      "]"
+    ],
+    "description": "Typed function definition"
+  },
+  "switch statement": {
+    "prefix": "switch",
+    "body": [
+      "switch ${1:value} [",
+      "    ${2:case1} -> ${3:result1}",
+      "    ${4:case2} -> ${5:result2}",
+      "    else -> ${6:default}",
+      "]"
+    ],
+    "description": "Switch statement"
+  },
+  "try-catch": {
+    "prefix": "try",
+    "body": [
+      "try [",
+      "    ${1:// code that might fail}",
+      "]",
+      "catch [err][",
+      "    ${2:// handle error}",
+      "]"
+    ],
+    "description": "Try-catch block"
+  },
+  "print": {
+    "prefix": "print",
+    "body": ["print ${1:value}"],
+    "description": "Print statement"
+  },
+  "inspect": {
+    "prefix": "inspect",
+    "body": ["inspect ${1:value}"],
+    "description": "Inspect value"
+  },
+  "map": {
+    "prefix": "map",
+    "body": ["map ${1:collection} '${2:item} -> ${3:transformation}"],
+    "description": "Map over collection"
+  },
+  "filter": {
+    "prefix": "filter",
+    "body": ["filter ${1:collection} '${2:item} -> ${3:condition}"],
+    "description": "Filter collection"
+  },
+  "fold": {
+    "prefix": "fold",
+    "body": [
+      "fold ${1:collection} ${2:initial} '${3:acc} '${4:item} ->",
+      "    ${5:accumulator}"
+    ],
+    "description": "Fold/reduce collection"
+  },
+  "dictionary": {
+    "prefix": "dict",
+    "body": ["#[", "    ${1:key}: ${2:value}", "]"],
+    "description": "Dictionary literal"
+  },
+  "block": {
+    "prefix": "block",
+    "body": ["[", "    ${1:// code}", "]"],
+    "description": "Block literal"
+  },
+  "string interpolation": {
+    "prefix": "interp",
+    "body": ["~\"${1:text} |${2:variable}| ${3:more text}\""],
+    "description": "Interpolated string"
+  },
+  "comment block": {
+    "prefix": "comment",
+    "body": [";---------------------------------", "; ${1:description}", ";---------------------------------"],
+    "description": "Comment block"
+  }
+}
