@@ -2288,35 +2288,73 @@ connection.onFoldingRanges((params) => {
 /**
  * Document Symbols - provides document outline
  */
-connection.onDocumentSymbol((params) => {
+connection.onRequest('textDocument/documentSymbol', (params) => {
     const document = documents.get(params.textDocument.uri);
-    if (!document) return [];
+    if (!document) {
+        connection.console.log('DocumentSymbol: No document found');
+        return [];
+    }
 
     const symbols = parseDocument(document);
     const result = [];
+    const text = document.getText();
+    const lines = text.split('\n');
+
+    connection.console.log(`DocumentSymbol: Found ${symbols.functions.size} functions and ${symbols.variables.size} variables`);
 
     // Add functions
     symbols.functions.forEach((info, name) => {
-        result.push(DocumentSymbol.create(
-            name,
-            info.type || 'function',
-            SymbolKind.Function,
-            Range.create(info.line, 0, info.line, 999),
-            Range.create(info.line, info.column, info.line, info.column + name.length)
-        ));
+        // Calculate the actual end of the line for the range
+        const line = lines[info.line] || '';
+        const lineLength = line.length;
+        
+        const symbol = {
+            name: name,
+            detail: info.type || ':function',
+            kind: SymbolKind.Function,
+            range: {
+                start: { line: info.line, character: 0 },
+                end: { line: info.line, character: lineLength }
+            },
+            selectionRange: {
+                start: { line: info.line, character: info.column },
+                end: { line: info.line, character: info.column + name.length }
+            },
+            children: []
+        };
+        
+        result.push(symbol);
+        connection.console.log(`DocumentSymbol: Added function ${name} at line ${info.line}`);
     });
 
     // Add variables
     symbols.variables.forEach((info, name) => {
-        result.push(DocumentSymbol.create(
-            name,
-            info.type || 'variable',
-            SymbolKind.Variable,
-            Range.create(info.line, 0, info.line, 999),
-            Range.create(info.line, info.column, info.line, info.column + name.length)
-        ));
+        const line = lines[info.line] || '';
+        const lineLength = line.length;
+        
+        const symbol = {
+            name: name,
+            detail: info.type || ':any',
+            kind: SymbolKind.Variable,
+            range: {
+                start: { line: info.line, character: 0 },
+                end: { line: info.line, character: lineLength }
+            },
+            selectionRange: {
+                start: { line: info.line, character: info.column },
+                end: { line: info.line, character: info.column + name.length }
+            },
+            children: []
+        };
+        
+        result.push(symbol);
+        connection.console.log(`DocumentSymbol: Added variable ${name} at line ${info.line}`);
     });
 
+    // Sort by line number for better outline ordering
+    result.sort((a, b) => a.range.start.line - b.range.start.line);
+
+    connection.console.log(`DocumentSymbol: Returning ${result.length} symbols`);
     return result;
 });
 

@@ -29,16 +29,5 @@ indent = { tab_size = 4, unit = "    " }
 
 # Outline/symbol icons for breadcrumbs and outline view
 # Maps LSP SymbolKind to Zed icons
-outline = { symbols = [
-  { kind = "Function", icon = "function", label_type = "code" },
-  { kind = "Variable", icon = "variable", label_type = "code" },
-  { kind = "Constant", icon = "constant", label_type = "code" },
-  { kind = "String", icon = "string", label_type = "code" },
-  { kind = "Number", icon = "number", label_type = "code" },
-  { kind = "Boolean", icon = "boolean", label_type = "code" },
-  { kind = "Array", icon = "array", label_type = "code" },
-  { kind = "Object", icon = "object", label_type = "code" },
-  { kind = "Key", icon = "key", label_type = "code" },
-  { kind = "Field", icon = "field", label_type = "code" },
-  { kind = "Method", icon = "method", label_type = "code" },
-]}
+[outline]
+symbols = { Function = "function", Variable = "variable" }

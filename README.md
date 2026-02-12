@@ -4,7 +4,7 @@ A comprehensive language extension for [Arturo](https://arturo-lang.io/) in [Zed
 
 ## Version
 
-**Current Version**: 0.5.3
+**Current Version**: 0.5.4
 
 ## Features
 
@@ -117,6 +117,7 @@ Or enable globally for all languages:
 19 built-in code snippets for common Arturo patterns:
 
 **Control Flow**:
+
 - `if` → If statement
 - `ifelse` → If-else statement  
 - `unless` → Unless statement
@@ -124,14 +125,17 @@ Or enable globally for all languages:
 - `switch` → Switch statement
 
 **Loops**:
+
 - `while` → While loop
 - `loop` → Loop over collection
 
 **Functions**:
+
 - `func` → Function definition
 - `tfunc` → Typed function definition
 
 **Collections**:
+
 - `map` → Map over collection
 - `filter` → Filter collection
 - `fold` → Fold/reduce collection
@@ -139,13 +143,16 @@ Or enable globally for all languages:
 - `block` → Block literal
 
 **Error Handling**:
+
 - `try` → Try-catch block
 
 **I/O & Debugging**:
+
 - `print` → Print statement
 - `inspect` → Inspect value
 
 **Other**:
+
 - `interp` → Interpolated string
 - `comment` → Comment block
 
@@ -164,6 +171,7 @@ Automatic bracket and quote pairing:
 ### ✅ Intelligent Word Selection
 
 Double-click to select entire Arturo identifiers including:
+
 - Hyphens: `my-function`
 - Question marks: `prime?`, `contains?`
 - Combined: `my-var?`
@@ -171,6 +179,7 @@ Double-click to select entire Arturo identifiers including:
 ### ✅ Outline Icons
 
 Visual icons in the outline view and breadcrumbs:
+
 - 🔧 Functions
 - 📦 Variables
 - 🔢 Constants
@@ -306,7 +315,20 @@ Contributions are welcome! Please feel free to submit pull requests or open issu
 
 ## Changelog
 
-### v0.5.3 (Current)
+### v0.5.4 (Current)
+
+- 🐛 **FIXED: Document Symbols (Outline/Breadcrumbs)** - Buffer symbols now work correctly
+  - **ROOT CAUSE**: Zed uses tree-sitter queries (`outline.scm`) for outline/breadcrumbs, not LSP documentSymbol
+  - **FIX**: Created `queries/outline.scm` and `queries/tags.scm` files to define symbol extraction rules via tree-sitter
+  - **IMPORTANT**: You must rebuild the Zed extension after adding these files (run `build-embedded.bat`)
+  - **BONUS FIX**: Also fixed LSP handler to use `connection.onRequest('textDocument/documentSymbol', ...)` pattern (for potential future use)
+  - Outline panel now displays all functions and variables correctly
+  - Breadcrumbs now show current symbol context (not just filename)
+  - Fixed outline icon configuration to use correct Zed format (changed from array to map)
+  - Added comprehensive logging for debugging symbol extraction
+  - Document symbols are now sorted by line number for better organization
+
+### v0.5.3
 
 - ✨ **NEW: Code Snippets** - 19 built-in snippets for common Arturo patterns
   - Control flow: `if`, `ifelse`, `unless`, `when`, `switch`
