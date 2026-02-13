@@ -8,3 +8,6 @@ grammars/
 src/lib.rs.backup
 language-server/bundle.js
 language-server/node_modules/
+build-embedded.bat
+build-embedded.sh
+package-lock.json
