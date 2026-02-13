@@ -1,14 +1,14 @@
 id = "arturo"
 name = "Arturo"
 description = "Arturo language support for Zed with type checking, inlay hints, and intelligent code editing"
-version = "0.5.4"
+version = "0.5.5"
 schema_version = 1
 authors = ["Ouyang Dazhi <204389009+DaZhi-the-Revelator@users.noreply.github.com>"]
 repository = "https://github.com/DaZhi-the-Revelator/zed-arturo"
 
 [grammars.arturo]
 repository = "https://github.com/DaZhi-the-Revelator/tree-sitter-arturo"
-commit = "531454c436079e99da4c998387a2578863934b46"
+commit = "4a024a950cb6b9348bdb0fff93d7bc9874f1866f"
 
 [language_servers.arturo-lsp]
 name = "Arturo LSP"

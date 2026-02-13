@@ -4,7 +4,7 @@ A comprehensive language extension for [Arturo](https://arturo-lang.io/) in [Zed
 
 ## Version
 
-**Current Version**: 0.5.4
+**Current Version**: 0.5.5
 
 ## Features
 
@@ -315,15 +315,29 @@ Contributions are welcome! Please feel free to submit pull requests or open issu
 
 ## Changelog
 
-### v0.5.4 (Current)
+### v0.5.5 (Current)
 
-- 🐛 **FIXED: Document Symbols (Outline/Breadcrumbs)** - Buffer symbols now work correctly
+- 🐛 **CRITICAL FIX: Document Symbols (Outline/Breadcrumbs)** - Fully working now!
+  - **ROOT CAUSE**: Labels were defined as a single token including the colon (`myFunc:`), making it impossible for tree-sitter queries to capture just the identifier
+  - **BREAKING CHANGE**: Modified tree-sitter grammar to separate label identifier from colon
+    - Old: `label: $ => /[a-zA-Z_][\w-]*\??:/` (single token)
+    - New: `label: $ => seq(field('identifier', /[a-zA-Z_][\w-]*\??/), ':')` (sequence with field)
+  - Updated all query files (highlights.scm, outline.scm, tags.scm) to use new structure
+  - Symbol names now display without trailing colon (e.g., `myFunc` instead of `myFunc:`)
+  - Buffer Symbols (Ctrl+Shift+O) now shows all functions and variables
+  - Outline Panel displays complete symbol tree with proper nesting
+  - Breadcrumbs show current function/variable context (not just filename)
+
+### v0.5.4
+
+- 🐛 **FIXED: Document Symbols (Outline/Breadcrumbs)** - Partial fix (Buffer symbols showed with trailing colons)
   - **ROOT CAUSE**: Zed uses tree-sitter queries (`outline.scm`) for outline/breadcrumbs, not LSP documentSymbol
   - **FIX**: Created `queries/outline.scm` and `queries/tags.scm` files to define symbol extraction rules via tree-sitter
+  - **LIMITATION**: Labels still showed with trailing colons due to grammar structure
   - **IMPORTANT**: You must rebuild the Zed extension after adding these files (run `build-embedded.bat`)
   - **BONUS FIX**: Also fixed LSP handler to use `connection.onRequest('textDocument/documentSymbol', ...)` pattern (for potential future use)
-  - Outline panel now displays all functions and variables correctly
-  - Breadcrumbs now show current symbol context (not just filename)
+  - Outline panel displays all functions and variables (but with colons)
+  - Breadcrumbs show current symbol context (but with colons)
   - Fixed outline icon configuration to use correct Zed format (changed from array to map)
   - Added comprehensive logging for debugging symbol extraction
   - Document symbols are now sorted by line number for better organization
