@@ -8,7 +8,7 @@ repository = "https://github.com/DaZhi-the-Revelator/zed-arturo"
 
 [grammars.arturo]
 repository = "https://github.com/DaZhi-the-Revelator/tree-sitter-arturo"
-commit = "4a024a950cb6b9348bdb0fff93d7bc9874f1866f"
+commit = "3797f71d9ef100c9e1d4b4b727de0e29db0b04fb"
 
 [language_servers.arturo-lsp]
 name = "Arturo LSP"

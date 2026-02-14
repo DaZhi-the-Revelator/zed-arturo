@@ -12,7 +12,7 @@
 /// directly in the extension binary. On first use, the bundle is written to disk
 /// in Zed's cache directory and then executed.
 
-use zed_extension_api::{self as zed, LanguageServerId, Result, settings::LspSettings};
+use zed_extension_api::{self as zed, LanguageServerId, Result};
 use std::fs;
 
 // Embed the language server bundle at compile time
@@ -49,18 +49,13 @@ impl zed::Extension for ArturoExtension {
 
     fn language_server_initialization_options(
         &mut self,
-        language_server_id: &LanguageServerId,
-        worktree: &zed::Worktree,
+        _language_server_id: &LanguageServerId,
+        _worktree: &zed::Worktree,
     ) -> Result<Option<zed::serde_json::Value>> {
-        // Read settings from Zed's configuration
-        let settings = LspSettings::for_worktree(language_server_id.as_ref(), worktree)
-            .ok()
-            .and_then(|lsp_settings| lsp_settings.settings.clone())
-            .unwrap_or_default();
-        
-        // Pass settings through to the LSP server
         Ok(Some(zed::serde_json::json!({
-            "settings": settings
+            "typeChecking": true,
+            "definitions": true,
+            "hover": true,
         })))
     }
 }

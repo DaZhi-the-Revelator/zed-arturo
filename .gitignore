@@ -8,8 +8,6 @@ grammars/
 src/lib.rs.backup
 language-server/bundle.js
 language-server/node_modules/
-build-embedded.bat
-build-embedded.sh
+*.bat
+*.sh
 package-lock.json
-rebuild-everything.bat
-rebuild.bat

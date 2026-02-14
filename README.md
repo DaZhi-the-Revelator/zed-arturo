@@ -4,7 +4,7 @@ A comprehensive language extension for [Arturo](https://arturo-lang.io/) in [Zed
 
 ## Version
 
-**Current Version**: 0.5.5
+**Current Version**: 2.0-dev
 
 ## Features
 
@@ -365,7 +365,18 @@ Contributions are welcome! Please feel free to submit pull requests or open issu
 
 ## Changelog
 
-### v0.5.5 (Current)
+### v2.0-dev (In Development)
+
+- 🐛 **FIXED: Outline Icons** - Icons now display correctly in outline view and breadcrumbs
+  - **ROOT CAUSE**: The `[outline] symbols` configuration in `config.toml` was non-functional
+  - Zed automatically infers icon types from tree-sitter query structure, not from manual configuration
+  - **FIX**: Removed non-functional `[outline] symbols` section from `config.toml`
+  - **ENHANCEMENT**: Updated `outline.scm` queries to use `@context` captures on function blocks
+  - This structural information allows Zed to differentiate between functions and variables
+  - Icons now appear automatically based on symbol type (functions vs variables)
+  - Verified in buffer outline (Cmd+Shift+O), outline panel (Cmd+Shift+B), and breadcrumbs
+
+### v0.5.5
 
 - 🐛 **CRITICAL FIX: Document Symbols (Outline/Breadcrumbs)** - Fully working now!
   - **ROOT CAUSE**: Labels were defined as a single token including the colon (`myFunc:`), making it impossible for tree-sitter queries to capture just the identifier

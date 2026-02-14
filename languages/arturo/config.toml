@@ -26,8 +26,3 @@ brackets = [
 
 # Indentation rules for Arturo
 indent = { tab_size = 4, unit = "    " }
-
-# Outline/symbol icons for breadcrumbs and outline view
-# Maps LSP SymbolKind to Zed icons
-[outline]
-symbols = { Function = "function", Variable = "variable" }
