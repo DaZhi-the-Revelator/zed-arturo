@@ -182,16 +182,6 @@ Double-click to select entire Arturo identifiers including:
 - Question marks: `prime?`, `contains?`
 - Combined: `my-var?`
 
-### ✅ Outline Icons
-
-Visual icons in the outline view and breadcrumbs:
-
-- 🔧 Functions
-- 📦 Variables
-- 🔢 Constants
-- 🔤 Strings
-- And more for better navigation
-
 ### 📊 Supported Types
 
 The LSP understands Arturo's complete type system:
@@ -367,14 +357,10 @@ Contributions are welcome! Please feel free to submit pull requests or open issu
 
 ### v2.0-dev (In Development)
 
-- 🐛 **FIXED: Outline Icons** - Icons now display correctly in outline view and breadcrumbs
-  - **ROOT CAUSE**: The `[outline] symbols` configuration in `config.toml` was non-functional
-  - Zed automatically infers icon types from tree-sitter query structure, not from manual configuration
-  - **FIX**: Removed non-functional `[outline] symbols` section from `config.toml`
-  - **ENHANCEMENT**: Updated `outline.scm` queries to use `@context` captures on function blocks
-  - This structural information allows Zed to differentiate between functions and variables
-  - Icons now appear automatically based on symbol type (functions vs variables)
-  - Verified in buffer outline (Cmd+Shift+O), outline panel (Cmd+Shift+B), and breadcrumbs
+- 🔧 **ENHANCEMENT: Feature Toggles** - Added ability to enable/disable LSP features via settings
+  - Completions, signatures, formatting, and highlights can be toggled on/off
+  - Settings are read at LSP initialization
+  - Requires Zed restart to apply changes
 
 ### v0.5.5
 
@@ -399,8 +385,6 @@ Contributions are welcome! Please feel free to submit pull requests or open issu
   - **BONUS FIX**: Also fixed LSP handler to use `connection.onRequest('textDocument/documentSymbol', ...)` pattern (for potential future use)
   - Outline panel displays all functions and variables (but with colons)
   - Breadcrumbs show current symbol context (but with colons)
-  - Fixed outline icon configuration to use correct Zed format (changed from array to map)
-  - Added comprehensive logging for debugging symbol extraction
   - Document symbols are now sorted by line number for better organization
 
 ### v0.5.3
@@ -425,12 +409,6 @@ Contributions are welcome! Please feel free to submit pull requests or open issu
   - Double-click now selects entire Arturo identifiers including hyphens and `?`
   - Examples: `my-function`, `prime?`, `contains?`, `my-var?`
   - Defined `word_characters = "a-zA-Z0-9_-?"` in config
-
-- ✨ **NEW: Outline Icons** - Visual symbols in outline view
-  - Functions show 🔧 icon
-  - Variables show 📦 icon
-  - Constants, strings, and other symbols have appropriate icons
-  - Improves navigation in outline view and breadcrumbs
 
 - 🔧 **ENHANCED: Indentation Settings** - Explicit 4-space indentation
   - Matches LSP formatter settings
@@ -511,17 +489,12 @@ Contributions are welcome! Please feel free to submit pull requests or open issu
 
 - ✨ **NEW: Semantic Tokens** - Enhanced syntax highlighting from the LSP server
 - ✨ **NEW: Workspace Symbols** - Global symbol search across all files
-- ✨ **NEW: Call Hierarchy** - Function call relationship visualization
-- 🐛 **CRITICAL FIX**: Fixed `connection.onPrepareCallHierarchy is not a function` error
-  - Changed Call Hierarchy handlers from `connection.onPrepareCallHierarchy()` to `connection.onRequest('textDocument/prepareCallHierarchy', ...)`
-  - Changed `connection.onCallHierarchyIncomingCalls()` to `connection.onRequest('callHierarchy/incomingCalls', ...)`
-  - Changed `connection.onCallHierarchyOutgoingCalls()` to `connection.onRequest('callHierarchy/outgoingCalls', ...)`
-  - These methods don't exist in vscode-languageserver 9.x, must use onRequest pattern
-- 🐛 Fixed `connection.onInlayHint` error (changed to use `connection.onRequest` for LSP 3.17 compatibility)
-- 🔧 Updated imports to include SemanticTokensBuilder and Call Hierarchy types
+- 🐛 **CRITICAL FIX**: Fixed LSP 3.17 compatibility issues
+  - Changed handlers to use `connection.onRequest` pattern for LSP 3.17 compatibility
+  - Fixed `connection.onInlayHint` error
+- 🔧 Updated imports to include SemanticTokensBuilder
 - ✅ Verified Semantic Tokens and Workspace Symbols use correct handler patterns
 - 📝 Updated documentation to reflect all implemented LSP 3.17 features
-- 📝 Clarified that all LSP 3.17 features (except Code Lens) are now implemented
 
 ### v0.4.6
 
