@@ -4331,18 +4331,18 @@ var require_main2 = __commonJS({
         }
         DocumentSymbol3.is = is;
       })(DocumentSymbol2 || (exports3.DocumentSymbol = DocumentSymbol2 = {}));
-      var CodeActionKind;
-      (function(CodeActionKind2) {
-        CodeActionKind2.Empty = "";
-        CodeActionKind2.QuickFix = "quickfix";
-        CodeActionKind2.Refactor = "refactor";
-        CodeActionKind2.RefactorExtract = "refactor.extract";
-        CodeActionKind2.RefactorInline = "refactor.inline";
-        CodeActionKind2.RefactorRewrite = "refactor.rewrite";
-        CodeActionKind2.Source = "source";
-        CodeActionKind2.SourceOrganizeImports = "source.organizeImports";
-        CodeActionKind2.SourceFixAll = "source.fixAll";
-      })(CodeActionKind || (exports3.CodeActionKind = CodeActionKind = {}));
+      var CodeActionKind2;
+      (function(CodeActionKind3) {
+        CodeActionKind3.Empty = "";
+        CodeActionKind3.QuickFix = "quickfix";
+        CodeActionKind3.Refactor = "refactor";
+        CodeActionKind3.RefactorExtract = "refactor.extract";
+        CodeActionKind3.RefactorInline = "refactor.inline";
+        CodeActionKind3.RefactorRewrite = "refactor.rewrite";
+        CodeActionKind3.Source = "source";
+        CodeActionKind3.SourceOrganizeImports = "source.organizeImports";
+        CodeActionKind3.SourceFixAll = "source.fixAll";
+      })(CodeActionKind2 || (exports3.CodeActionKind = CodeActionKind2 = {}));
       var CodeActionTriggerKind;
       (function(CodeActionTriggerKind2) {
         CodeActionTriggerKind2.Invoked = 1;
@@ -4367,8 +4367,8 @@ var require_main2 = __commonJS({
         }
         CodeActionContext2.is = is;
       })(CodeActionContext || (exports3.CodeActionContext = CodeActionContext = {}));
-      var CodeAction;
-      (function(CodeAction2) {
+      var CodeAction2;
+      (function(CodeAction3) {
         function create(title, kindOrCommandOrEdit, kind) {
           var result = { title };
           var checkKind = true;
@@ -4385,13 +4385,13 @@ var require_main2 = __commonJS({
           }
           return result;
         }
-        CodeAction2.create = create;
+        CodeAction3.create = create;
         function is(value) {
           var candidate = value;
           return candidate && Is.string(candidate.title) && (candidate.diagnostics === void 0 || Is.typedArray(candidate.diagnostics, Diagnostic2.is)) && (candidate.kind === void 0 || Is.string(candidate.kind)) && (candidate.edit !== void 0 || candidate.command !== void 0) && (candidate.command === void 0 || Command.is(candidate.command)) && (candidate.isPreferred === void 0 || Is.boolean(candidate.isPreferred)) && (candidate.edit === void 0 || WorkspaceEdit2.is(candidate.edit));
         }
-        CodeAction2.is = is;
-      })(CodeAction || (exports3.CodeAction = CodeAction = {}));
+        CodeAction3.is = is;
+      })(CodeAction2 || (exports3.CodeAction = CodeAction2 = {}));
       var CodeLens;
       (function(CodeLens2) {
         function create(range, data) {
@@ -9167,7 +9167,9 @@ var {
   InlayHintKind,
   SemanticTokensBuilder,
   DocumentHighlight,
-  DocumentHighlightKind
+  DocumentHighlightKind,
+  CodeAction,
+  CodeActionKind
 } = require_node3();
 var { TextDocument: TextDocument2 } = (init_main(), __toCommonJS(main_exports));
 var connection = createConnection(ProposedFeatures.all);
@@ -9175,29 +9177,37 @@ var documents = new TextDocuments(TextDocument2);
 var hasConfigurationCapability = false;
 var hasWorkspaceFolderCapability = false;
 var hasDiagnosticRelatedInformationCapability = false;
+var enableCompletions = true;
+var enableSignatures = true;
+var enableFormatting = true;
+var enableHighlights = true;
 connection.onInitialize((params) => {
   const capabilities = params.capabilities;
   hasConfigurationCapability = !!(capabilities.workspace && !!capabilities.workspace.configuration);
   hasWorkspaceFolderCapability = !!(capabilities.workspace && !!capabilities.workspace.workspaceFolders);
   hasDiagnosticRelatedInformationCapability = !!(capabilities.textDocument && capabilities.textDocument.publishDiagnostics && capabilities.textDocument.publishDiagnostics.relatedInformation);
+  connection.console.log("=== INITIALIZATION ===");
+  connection.console.log(`Full initializationOptions: ${JSON.stringify(params.initializationOptions, null, 2)}`);
+  if (params.initializationOptions && params.initializationOptions.settings) {
+    const settings = params.initializationOptions.settings;
+    connection.console.log(`Settings from initializationOptions: ${JSON.stringify(settings, null, 2)}`);
+    enableCompletions = settings.completions !== "off";
+    enableSignatures = settings.signatures !== "off";
+    enableFormatting = settings.formatting !== "off";
+    enableHighlights = settings.highlights !== "off";
+    connection.console.log(`Initial feature flags: completions=${enableCompletions}, signatures=${enableSignatures}, formatting=${enableFormatting}, highlights=${enableHighlights}`);
+  } else {
+    connection.console.log("No settings found in initializationOptions");
+  }
   const result = {
     capabilities: {
       textDocumentSync: TextDocumentSyncKind.Incremental,
-      completionProvider: {
-        resolveProvider: true,
-        triggerCharacters: [".", ":", "`", "#", "'"]
-      },
       hoverProvider: true,
       definitionProvider: true,
-      signatureHelpProvider: {
-        triggerCharacters: ["[", " ", ","],
-        retriggerCharacters: [" ", ","]
-      },
       referencesProvider: true,
       renameProvider: {
         prepareProvider: true
       },
-      documentFormattingProvider: true,
       foldingRangeProvider: true,
       documentSymbolProvider: true,
       inlayHintProvider: true,
@@ -9220,9 +9230,32 @@ connection.onInitialize((params) => {
         full: true
       },
       workspaceSymbolProvider: true,
-      documentHighlightProvider: true
+      codeActionProvider: {
+        codeActionKinds: [
+          CodeActionKind.QuickFix,
+          CodeActionKind.Refactor
+        ]
+      }
     }
   };
+  if (enableCompletions) {
+    result.capabilities.completionProvider = {
+      resolveProvider: true,
+      triggerCharacters: [".", ":", "`", "#", "'"]
+    };
+  }
+  if (enableSignatures) {
+    result.capabilities.signatureHelpProvider = {
+      triggerCharacters: ["[", " ", ","],
+      retriggerCharacters: [" ", ","]
+    };
+  }
+  if (enableFormatting) {
+    result.capabilities.documentFormattingProvider = true;
+  }
+  if (enableHighlights) {
+    result.capabilities.documentHighlightProvider = true;
+  }
   if (hasWorkspaceFolderCapability) {
     result.capabilities.workspace = {
       workspaceFolders: {
@@ -9241,6 +9274,99 @@ connection.onInitialized(() => {
       connection.console.log("Workspace folder change event received.");
     });
   }
+});
+connection.onDidChangeConfiguration(async (change) => {
+  connection.console.log("=== CONFIGURATION CHANGE ===");
+  connection.console.log(`Full change object: ${JSON.stringify(change, null, 2)}`);
+  connection.console.log(`change.settings: ${JSON.stringify(change.settings, null, 2)}`);
+  if (hasConfigurationCapability) {
+    const settings = change.settings;
+    let arturoSettings = null;
+    if (settings.lsp && settings.lsp["arturo-lsp"]) {
+      connection.console.log("Found settings at path: settings.lsp[arturo-lsp]");
+      arturoSettings = settings.lsp["arturo-lsp"];
+    } else if (settings.completions !== void 0) {
+      connection.console.log("Found settings at path: settings (direct)");
+      arturoSettings = settings;
+    } else if (settings["arturo-lsp"]) {
+      connection.console.log("Found settings at path: settings[arturo-lsp]");
+      arturoSettings = settings["arturo-lsp"];
+    }
+    if (!arturoSettings) {
+      connection.console.log("ERROR: Could not find arturo settings in any expected path!");
+      connection.console.log(`Available keys in settings: ${Object.keys(settings).join(", ")}`);
+    }
+    if (arturoSettings) {
+      connection.console.log(`Arturo settings found: ${JSON.stringify(arturoSettings, null, 2)}`);
+      const oldCompletions = enableCompletions;
+      const oldSignatures = enableSignatures;
+      const oldFormatting = enableFormatting;
+      const oldHighlights = enableHighlights;
+      connection.console.log(`Old values: completions=${oldCompletions}, signatures=${oldSignatures}, formatting=${oldFormatting}, highlights=${oldHighlights}`);
+      enableCompletions = arturoSettings.completions !== "off";
+      enableSignatures = arturoSettings.signatures !== "off";
+      enableFormatting = arturoSettings.formatting !== "off";
+      enableHighlights = arturoSettings.highlights !== "off";
+      connection.console.log(`New values: completions=${enableCompletions}, signatures=${enableSignatures}, formatting=${enableFormatting}, highlights=${enableHighlights}`);
+      connection.console.log(`Changes: completions=${oldCompletions !== enableCompletions}, signatures=${oldSignatures !== enableSignatures}, formatting=${oldFormatting !== enableFormatting}, highlights=${oldHighlights !== enableHighlights}`);
+      try {
+        if (enableCompletions !== oldCompletions) {
+          connection.console.log(`Attempting to ${enableCompletions ? "register" : "unregister"} completion provider`);
+          if (enableCompletions) {
+            await connection.client.register({
+              id: "completion",
+              method: "textDocument/completion",
+              registerOptions: {
+                resolveProvider: true,
+                triggerCharacters: [".", ":", "`", "#", "'"]
+              }
+            });
+            connection.console.log("Successfully registered completion provider");
+          } else {
+            await connection.client.unregister({ id: "completion", method: "textDocument/completion" });
+            connection.console.log("Successfully unregistered completion provider");
+          }
+        }
+        if (enableSignatures !== oldSignatures) {
+          if (enableSignatures) {
+            await connection.client.register({
+              id: "signatureHelp",
+              method: "textDocument/signatureHelp",
+              registerOptions: {
+                triggerCharacters: ["[", " ", ","],
+                retriggerCharacters: [" ", ","]
+              }
+            });
+          } else {
+            await connection.client.unregister({ id: "signatureHelp", method: "textDocument/signatureHelp" });
+          }
+        }
+        if (enableFormatting !== oldFormatting) {
+          if (enableFormatting) {
+            await connection.client.register({
+              id: "documentFormatting",
+              method: "textDocument/formatting"
+            });
+          } else {
+            await connection.client.unregister({ id: "documentFormatting", method: "textDocument/formatting" });
+          }
+        }
+        if (enableHighlights !== oldHighlights) {
+          if (enableHighlights) {
+            await connection.client.register({
+              id: "documentHighlight",
+              method: "textDocument/documentHighlight"
+            });
+          } else {
+            await connection.client.unregister({ id: "documentHighlight", method: "textDocument/documentHighlight" });
+          }
+        }
+      } catch (error) {
+        connection.console.log(`Error re-registering capabilities: ${error}`);
+      }
+    }
+  }
+  documents.all().forEach(validateTextDocument);
 });
 var ARTURO_TYPES = {
   "null": { description: "Null value" },
@@ -11934,6 +12060,129 @@ connection.onWorkspaceSymbol((params) => {
     });
   });
   return symbols;
+});
+connection.onCodeAction((params) => {
+  const document = documents.get(params.textDocument.uri);
+  if (!document)
+    return [];
+  const text = document.getText();
+  const lines = text.split("\n");
+  const codeActions = [];
+  const diagnostics = params.context.diagnostics;
+  diagnostics.forEach((diagnostic) => {
+    const line = lines[diagnostic.range.start.line];
+    const message = diagnostic.message;
+    if (message.includes("may be undefined")) {
+      const match = message.match(/'([^']+)' may be undefined/);
+      if (match) {
+        const varName = match[1];
+        const lineText = lines[diagnostic.range.start.line];
+        const assignmentPattern = new RegExp(`${varName}s*:`);
+        if (!assignmentPattern.test(lineText)) {
+          const action = CodeAction.create(
+            `Define '${varName}' as a variable`,
+            {
+              changes: {
+                [params.textDocument.uri]: [
+                  TextEdit.insert(
+                    Position.create(diagnostic.range.start.line, 0),
+                    `${varName}: null
+`
+                  )
+                ]
+              }
+            },
+            CodeActionKind.QuickFix
+          );
+          action.diagnostics = [diagnostic];
+          codeActions.push(action);
+        }
+      }
+    }
+    if (message.includes("Cannot add") || message.includes("Cannot subtract") || message.includes("Cannot multiply") || message.includes("Cannot divide")) {
+      const action = CodeAction.create(
+        "Convert operands to same type",
+        {
+          changes: {
+            [params.textDocument.uri]: [
+              // This is a placeholder - in a real implementation,
+              // we would analyze the operation and suggest specific conversions
+              TextEdit.insert(
+                diagnostic.range.start,
+                "; TODO: Fix type mismatch - "
+              )
+            ]
+          }
+        },
+        CodeActionKind.QuickFix
+      );
+      action.diagnostics = [diagnostic];
+      codeActions.push(action);
+    }
+  });
+  if (params.range && params.range.start.line !== params.range.end.line) {
+    const startLine = params.range.start.line;
+    const endLine = params.range.end.line;
+    const selectedLines = lines.slice(startLine, endLine + 1);
+    const selectedText = selectedLines.join("\n");
+    if (selectedText.trim()) {
+      const action = CodeAction.create(
+        "Extract to function",
+        {
+          changes: {
+            [params.textDocument.uri]: [
+              // Replace selected text with function call
+              TextEdit.replace(
+                Range.create(
+                  Position.create(startLine, 0),
+                  Position.create(endLine, lines[endLine].length)
+                ),
+                "extracted []"
+              ),
+              // Add function definition at start of file
+              TextEdit.insert(
+                Position.create(0, 0),
+                `extracted: function [] [
+    ${selectedText.split("\n").join("\n    ")}
+]
+
+`
+              )
+            ]
+          }
+        },
+        CodeActionKind.Refactor
+      );
+      codeActions.push(action);
+    }
+  }
+  const lineIndex = params.range.start.line;
+  const currentLine = lines[lineIndex];
+  const assignmentMatch = currentLine.match(/(\w+)\s*:\s*([^;\n]+)/);
+  if (assignmentMatch && !assignmentMatch[2].trim().startsWith(":")) {
+    const varName = assignmentMatch[1];
+    const value = assignmentMatch[2].trim();
+    const inferredType = inferType(value);
+    if (inferredType !== ":any") {
+      const colonIndex = currentLine.indexOf(":");
+      const action = CodeAction.create(
+        `Add type annotation (${inferredType})`,
+        {
+          changes: {
+            [params.textDocument.uri]: [
+              TextEdit.insert(
+                Position.create(lineIndex, colonIndex + 1),
+                ` ${inferredType}`
+              )
+            ]
+          }
+        },
+        CodeActionKind.Refactor
+      );
+      codeActions.push(action);
+    }
+  }
+  return codeActions;
 });
 function getWordAtPosition(line, character) {
   const beforeCursor = line.substring(0, character);

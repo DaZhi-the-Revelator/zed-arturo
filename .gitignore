@@ -11,3 +11,5 @@ language-server/node_modules/
 build-embedded.bat
 build-embedded.sh
 package-lock.json
+rebuild-everything.bat
+rebuild.bat

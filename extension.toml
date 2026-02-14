@@ -13,3 +13,9 @@ commit = "4a024a950cb6b9348bdb0fff93d7bc9874f1866f"
 [language_servers.arturo-lsp]
 name = "Arturo LSP"
 languages = ["Arturo"]
+
+[language_servers.arturo-lsp.settings]
+completions = "on"
+signatures = "on"
+formatting = "on"
+highlights = "on"

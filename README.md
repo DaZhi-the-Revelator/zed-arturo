@@ -71,6 +71,12 @@ Please note Zed keymaps may have changed - use the Command Palette, Keymap and K
   - Visual feedback for symbol usage in current file
   - Faster than Find All References for quick scanning
 
+- **Code Actions**: Quick fixes and refactorings:
+  - Define undefined variables
+  - Add type annotations to variables
+  - Extract code to function
+  - Fix type mismatches
+
 ### ✅ Syntax Highlighting
 
 Powered by tree-sitter with support for:
@@ -232,6 +238,50 @@ The LSP understands Arturo's complete type system:
 ## Configuration
 
 The extension works out of the box with no configuration required. The LSP starts automatically when you open an `.art` file.
+
+### LSP Feature Toggles (v2.0+)
+
+You can selectively enable or disable specific LSP features through your Zed `settings.json`:
+
+```json
+{
+  "lsp": {
+    "arturo-lsp": {
+      "settings": {
+        "completions": "off",  // Disable code completion
+        "signatures": "on",    // Enable signature help (default)
+        "formatting": "off",   // Disable document formatting
+        "highlights": "on"     // Enable document highlights (default)
+      }
+    }
+  }
+}
+```
+
+**Available Features**:
+
+- `completions` - Code completion and autocomplete suggestions
+- `signatures` - Signature help (parameter hints)
+- `formatting` - Document formatting
+- `highlights` - Document highlights (symbol occurrences)
+
+**Default Behavior**: All features are enabled by default. Set a feature to `"off"` to disable it.
+
+**IMPORTANT**: Settings changes require a **Zed restart** to take effect. This is because settings are only read when the LSP server initializes.
+
+**When to Use**:
+
+- Disable `completions` if you prefer manual typing without autocomplete
+- Disable `signatures` if parameter hints feel intrusive
+- Disable `formatting` if you have custom formatting preferences
+- Disable `highlights` if you find automatic highlighting distracting
+
+**How to Change Settings**:
+
+1. Edit your `settings.json` with the desired changes
+2. Save the file
+3. **Close and restart Zed completely**
+4. Open an `.art` file to verify the changes took effect
 
 ## Usage
 

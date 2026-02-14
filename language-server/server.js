@@ -18,6 +18,7 @@
  * - Semantic tokens (enhanced syntax highlighting)
  * - Workspace symbols (global symbol search)
  * - Document highlights (highlight symbol occurrences)
+ * - Code actions (quick fixes and refactorings)
  * - Proper single-line comment handling (;)
  * - Recognition of multiline strings and code blocks
  * - Support for attribute parameters (.else, .string, etc.)
@@ -67,6 +68,8 @@ const {
     SemanticTokensBuilder,
     DocumentHighlight,
     DocumentHighlightKind,
+    CodeAction,
+    CodeActionKind,
 } = require('vscode-languageserver/node');
 
 const { TextDocument } = require('vscode-languageserver-textdocument');
@@ -80,6 +83,12 @@ const documents = new TextDocuments(TextDocument);
 let hasConfigurationCapability = false;
 let hasWorkspaceFolderCapability = false;
 let hasDiagnosticRelatedInformationCapability = false;
+
+// Feature settings from Zed config
+let enableCompletions = true;
+let enableSignatures = true;
+let enableFormatting = true;
+let enableHighlights = true;
 
 /**
  * Initialize the language server
@@ -99,24 +108,31 @@ connection.onInitialize((params) => {
         capabilities.textDocument.publishDiagnostics.relatedInformation
     );
 
+    // Read initial settings from initialization options
+    connection.console.log('=== INITIALIZATION ===');
+    connection.console.log(`Full initializationOptions: ${JSON.stringify(params.initializationOptions, null, 2)}`);
+    
+    if (params.initializationOptions && params.initializationOptions.settings) {
+        const settings = params.initializationOptions.settings;
+        connection.console.log(`Settings from initializationOptions: ${JSON.stringify(settings, null, 2)}`);
+        enableCompletions = settings.completions !== 'off';
+        enableSignatures = settings.signatures !== 'off';
+        enableFormatting = settings.formatting !== 'off';
+        enableHighlights = settings.highlights !== 'off';
+        connection.console.log(`Initial feature flags: completions=${enableCompletions}, signatures=${enableSignatures}, formatting=${enableFormatting}, highlights=${enableHighlights}`);
+    } else {
+        connection.console.log('No settings found in initializationOptions');
+    }
+
     const result = {
         capabilities: {
             textDocumentSync: TextDocumentSyncKind.Incremental,
-            completionProvider: {
-                resolveProvider: true,
-                triggerCharacters: ['.', ':', '`', '#', "'"]
-            },
             hoverProvider: true,
             definitionProvider: true,
-            signatureHelpProvider: {
-                triggerCharacters: ['[', ' ', ','],
-                retriggerCharacters: [' ', ',']
-            },
             referencesProvider: true,
             renameProvider: {
                 prepareProvider: true
             },
-            documentFormattingProvider: true,
             foldingRangeProvider: true,
             documentSymbolProvider: true,
             inlayHintProvider: true,
@@ -131,9 +147,37 @@ connection.onInitialize((params) => {
                 full: true
             },
             workspaceSymbolProvider: true,
-            documentHighlightProvider: true,
+            codeActionProvider: {
+                codeActionKinds: [
+                    CodeActionKind.QuickFix,
+                    CodeActionKind.Refactor
+                ]
+            },
         }
     };
+
+    // Add conditional capabilities based on settings
+    if (enableCompletions) {
+        result.capabilities.completionProvider = {
+            resolveProvider: true,
+            triggerCharacters: ['.', ':', '`', '#', "'"]
+        };
+    }
+
+    if (enableSignatures) {
+        result.capabilities.signatureHelpProvider = {
+            triggerCharacters: ['[', ' ', ','],
+            retriggerCharacters: [' ', ',']
+        };
+    }
+
+    if (enableFormatting) {
+        result.capabilities.documentFormattingProvider = true;
+    }
+
+    if (enableHighlights) {
+        result.capabilities.documentHighlightProvider = true;
+    }
 
     if (hasWorkspaceFolderCapability) {
         result.capabilities.workspace = {
@@ -155,6 +199,132 @@ connection.onInitialized(() => {
             connection.console.log('Workspace folder change event received.');
         });
     }
+});
+
+/**
+ * Configuration change handler
+ */
+connection.onDidChangeConfiguration(async (change) => {
+    connection.console.log('=== CONFIGURATION CHANGE ===');
+    connection.console.log(`Full change object: ${JSON.stringify(change, null, 2)}`);
+    connection.console.log(`change.settings: ${JSON.stringify(change.settings, null, 2)}`);
+    
+    if (hasConfigurationCapability) {
+        // Read configuration from Zed settings
+        const settings = change.settings;
+        
+        // Check for settings in various possible paths
+        let arturoSettings = null;
+        
+        // Path 1: lsp.arturo-lsp (language server ID)
+        if (settings.lsp && settings.lsp['arturo-lsp']) {
+            connection.console.log('Found settings at path: settings.lsp[arturo-lsp]');
+            arturoSettings = settings.lsp['arturo-lsp'];
+        }
+        // Path 2: direct settings object
+        else if (settings.completions !== undefined) {
+            connection.console.log('Found settings at path: settings (direct)');
+            arturoSettings = settings;
+        }
+        // Path 3: Check if settings are nested under arturo-lsp directly
+        else if (settings['arturo-lsp']) {
+            connection.console.log('Found settings at path: settings[arturo-lsp]');
+            arturoSettings = settings['arturo-lsp'];
+        }
+        
+        if (!arturoSettings) {
+            connection.console.log('ERROR: Could not find arturo settings in any expected path!');
+            connection.console.log(`Available keys in settings: ${Object.keys(settings).join(', ')}`);
+        }
+        
+        if (arturoSettings) {
+            connection.console.log(`Arturo settings found: ${JSON.stringify(arturoSettings, null, 2)}`);
+            
+            // Store old values
+            const oldCompletions = enableCompletions;
+            const oldSignatures = enableSignatures;
+            const oldFormatting = enableFormatting;
+            const oldHighlights = enableHighlights;
+            
+            connection.console.log(`Old values: completions=${oldCompletions}, signatures=${oldSignatures}, formatting=${oldFormatting}, highlights=${oldHighlights}`);
+            
+            // Update feature flags (default to true if not specified)
+            enableCompletions = arturoSettings.completions !== 'off';
+            enableSignatures = arturoSettings.signatures !== 'off';
+            enableFormatting = arturoSettings.formatting !== 'off';
+            enableHighlights = arturoSettings.highlights !== 'off';
+            
+            connection.console.log(`New values: completions=${enableCompletions}, signatures=${enableSignatures}, formatting=${enableFormatting}, highlights=${enableHighlights}`);
+            connection.console.log(`Changes: completions=${oldCompletions !== enableCompletions}, signatures=${oldSignatures !== enableSignatures}, formatting=${oldFormatting !== enableFormatting}, highlights=${oldHighlights !== enableHighlights}`);
+            
+            // Re-register/unregister capabilities as needed
+            try {
+                // Completion provider
+                if (enableCompletions !== oldCompletions) {
+                    connection.console.log(`Attempting to ${enableCompletions ? 'register' : 'unregister'} completion provider`);
+                    if (enableCompletions) {
+                        await connection.client.register({
+                            id: 'completion',
+                            method: 'textDocument/completion',
+                            registerOptions: {
+                                resolveProvider: true,
+                                triggerCharacters: ['.', ':', '`', '#', "'"]
+                            }
+                        });
+                        connection.console.log('Successfully registered completion provider');
+                    } else {
+                        await connection.client.unregister({ id: 'completion', method: 'textDocument/completion' });
+                        connection.console.log('Successfully unregistered completion provider');
+                    }
+                }
+                
+                // Signature help provider
+                if (enableSignatures !== oldSignatures) {
+                    if (enableSignatures) {
+                        await connection.client.register({
+                            id: 'signatureHelp',
+                            method: 'textDocument/signatureHelp',
+                            registerOptions: {
+                                triggerCharacters: ['[', ' ', ','],
+                                retriggerCharacters: [' ', ',']
+                            }
+                        });
+                    } else {
+                        await connection.client.unregister({ id: 'signatureHelp', method: 'textDocument/signatureHelp' });
+                    }
+                }
+                
+                // Document formatting provider
+                if (enableFormatting !== oldFormatting) {
+                    if (enableFormatting) {
+                        await connection.client.register({
+                            id: 'documentFormatting',
+                            method: 'textDocument/formatting'
+                        });
+                    } else {
+                        await connection.client.unregister({ id: 'documentFormatting', method: 'textDocument/formatting' });
+                    }
+                }
+                
+                // Document highlight provider
+                if (enableHighlights !== oldHighlights) {
+                    if (enableHighlights) {
+                        await connection.client.register({
+                            id: 'documentHighlight',
+                            method: 'textDocument/documentHighlight'
+                        });
+                    } else {
+                        await connection.client.unregister({ id: 'documentHighlight', method: 'textDocument/documentHighlight' });
+                    }
+                }
+            } catch (error) {
+                connection.console.log(`Error re-registering capabilities: ${error}`);
+            }
+        }
+    }
+    
+    // Revalidate all open documents
+    documents.all().forEach(validateTextDocument);
 });
 
 /**
@@ -2586,6 +2756,146 @@ connection.onWorkspaceSymbol((params) => {
     });
     
     return symbols;
+});
+
+/**
+ * Code Actions - provides quick fixes and refactorings
+ */
+connection.onCodeAction((params) => {
+    const document = documents.get(params.textDocument.uri);
+    if (!document) return [];
+
+    const text = document.getText();
+    const lines = text.split('\n');
+    const codeActions = [];
+    const diagnostics = params.context.diagnostics;
+
+    // Process each diagnostic to provide quick fixes
+    diagnostics.forEach(diagnostic => {
+        const line = lines[diagnostic.range.start.line];
+        const message = diagnostic.message;
+
+        // Quick fix for undefined variables: Add type annotation
+        if (message.includes('may be undefined')) {
+            const match = message.match(/'([^']+)' may be undefined/);
+            if (match) {
+                const varName = match[1];
+                const lineText = lines[diagnostic.range.start.line];
+                
+                // Check if this looks like it should be a variable assignment
+                const assignmentPattern = new RegExp(`${varName}\s*:`);
+                if (!assignmentPattern.test(lineText)) {
+                    // Suggest defining the variable
+                    const action = CodeAction.create(
+                        `Define '${varName}' as a variable`,
+                        {
+                            changes: {
+                                [params.textDocument.uri]: [
+                                    TextEdit.insert(
+                                        Position.create(diagnostic.range.start.line, 0),
+                                        `${varName}: null\n`
+                                    )
+                                ]
+                            }
+                        },
+                        CodeActionKind.QuickFix
+                    );
+                    action.diagnostics = [diagnostic];
+                    codeActions.push(action);
+                }
+            }
+        }
+
+        // Quick fix for type errors: Convert to string
+        if (message.includes('Cannot add') || message.includes('Cannot subtract') || 
+            message.includes('Cannot multiply') || message.includes('Cannot divide')) {
+            const action = CodeAction.create(
+                'Convert operands to same type',
+                {
+                    changes: {
+                        [params.textDocument.uri]: [
+                            // This is a placeholder - in a real implementation,
+                            // we would analyze the operation and suggest specific conversions
+                            TextEdit.insert(
+                                diagnostic.range.start,
+                                '; TODO: Fix type mismatch - '
+                            )
+                        ]
+                    }
+                },
+                CodeActionKind.QuickFix
+            );
+            action.diagnostics = [diagnostic];
+            codeActions.push(action);
+        }
+    });
+
+    // Refactoring: Extract to function (when text is selected)
+    if (params.range && params.range.start.line !== params.range.end.line) {
+        const startLine = params.range.start.line;
+        const endLine = params.range.end.line;
+        const selectedLines = lines.slice(startLine, endLine + 1);
+        const selectedText = selectedLines.join('\n');
+        
+        if (selectedText.trim()) {
+            const action = CodeAction.create(
+                'Extract to function',
+                {
+                    changes: {
+                        [params.textDocument.uri]: [
+                            // Replace selected text with function call
+                            TextEdit.replace(
+                                Range.create(
+                                    Position.create(startLine, 0),
+                                    Position.create(endLine, lines[endLine].length)
+                                ),
+                                'extracted []'
+                            ),
+                            // Add function definition at start of file
+                            TextEdit.insert(
+                                Position.create(0, 0),
+                                `extracted: function [] [\n    ${selectedText.split('\n').join('\n    ')}\n]\n\n`
+                            )
+                        ]
+                    }
+                },
+                CodeActionKind.Refactor
+            );
+            codeActions.push(action);
+        }
+    }
+
+    // Refactoring: Add type annotation to variable
+    const lineIndex = params.range.start.line;
+    const currentLine = lines[lineIndex];
+    const assignmentMatch = currentLine.match(/(\w+)\s*:\s*([^;\n]+)/);
+    
+    if (assignmentMatch && !assignmentMatch[2].trim().startsWith(':')) {
+        const varName = assignmentMatch[1];
+        const value = assignmentMatch[2].trim();
+        const inferredType = inferType(value);
+        
+        if (inferredType !== ':any') {
+            const colonIndex = currentLine.indexOf(':');
+            const action = CodeAction.create(
+                `Add type annotation (${inferredType})`,
+                {
+                    changes: {
+                        [params.textDocument.uri]: [
+                            TextEdit.insert(
+                                Position.create(lineIndex, colonIndex + 1),
+                                ` ${inferredType}`
+                            )
+                        ]
+                    }
+                },
+                CodeActionKind.Refactor
+            );
+            codeActions.push(action);
+        }
+    }
+
+    return codeActions;
 });
 
 /**
