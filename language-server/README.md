@@ -9,6 +9,9 @@ This directory contains the Language Server Protocol (LSP) implementation for Ar
 - **Hover Information**: Display type information and documentation for symbols
 - **Code Completion**: Autocomplete for built-in functions, types, and user-defined symbols
 - **Signature Help**: Real-time parameter hints with active parameter tracking
+  - **Dynamic Signature Generation (v2.0+)**: Automatically indexes all 521+ built-in functions
+  - **Stale-While-Revalidate Caching**: Instant startup with background updates
+  - **Offline-First**: Works without internet using seed cache with 80 popular functions
 - **Find All References**: Scope-aware reference finding
 - **Rename Symbol**: Safe symbol renaming with validation
 - **Document Formatting**: Auto-format with bracket-aware indentation
@@ -66,6 +69,46 @@ To test the language server standalone:
 
 ```bash
 node server.js --stdio
+```
+
+## Architecture (v2.0+)
+
+### Dynamic Signature Generation
+
+The LSP now features a sophisticated signature indexing system:
+
+**Components**:
+- `lib/signature-indexer.js`: Core indexing module with stale-while-revalidate pattern
+- `seed-cache.json`: Pre-packaged cache with 80 most popular functions
+- `.cache/signatures.json`: User cache updated every 24 hours
+
+**Workflow**:
+1. **Boot Phase**: LSP loads seed cache immediately (< 10ms)
+2. **Background Check**: After startup, checks for updated documentation
+3. **Delta Update**: If newer signatures found, updates cache for next session
+4. **Seamless UX**: Users never notice when signatures refresh
+
+**Benefits**:
+- **Coverage**: 521+ functions vs 80 manually-defined
+- **Performance**: Instant startup, non-blocking updates
+- **Reliability**: Works offline, graceful degradation
+- **Maintainability**: Auto-updates from Arturo documentation
+
+### Signature Cache Structure
+
+```json
+{
+  "signatures": {
+    "functionName": {
+      "signature": "functionName param :type -> :returnType",
+      "description": "Function description",
+      "params": [{ "name": "param", "type": ":type" }],
+      "returns": ":returnType"
+    }
+  },
+  "lastUpdate": "2025-02-14T00:00:00.000Z",
+  "version": "1.0"
+}
 ```
 
 ## Type System

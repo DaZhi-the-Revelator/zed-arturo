@@ -8,6 +8,4 @@ grammars/
 src/lib.rs.backup
 language-server/bundle.js
 language-server/node_modules/
-*.bat
-*.sh
 package-lock.json

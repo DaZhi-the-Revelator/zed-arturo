@@ -1,0 +1,492 @@
+{
+  "signatures": {
+    "return": {
+      "signature": "return value :any -> :nothing",
+      "description": "Returns a value from a function",
+      "params": [{ "name": "value", "type": ":any" }],
+      "returns": ":nothing"
+    },
+    "if": {
+      "signature": "if condition :logical action :block -> :any",
+      "description": "Executes action if condition is true",
+      "params": [{ "name": "condition", "type": ":logical" }, { "name": "action", "type": ":block" }],
+      "returns": ":any"
+    },
+    "unless": {
+      "signature": "unless condition :logical action :block -> :any",
+      "description": "Executes action if condition is false",
+      "params": [{ "name": "condition", "type": ":logical" }, { "name": "action", "type": ":block" }],
+      "returns": ":any"
+    },
+    "when": {
+      "signature": "when condition :logical action :block -> :any",
+      "description": "Executes action when condition is true (alias for if)",
+      "params": [{ "name": "condition", "type": ":logical" }, { "name": "action", "type": ":block" }],
+      "returns": ":any"
+    },
+    "switch": {
+      "signature": "switch value :any cases :block -> :any",
+      "description": "Performs multi-way conditional branching",
+      "params": [{ "name": "value", "type": ":any" }, { "name": "cases", "type": ":block" }],
+      "returns": ":any"
+    },
+    "case": {
+      "signature": "case value :any condition :block -> :any",
+      "description": "Defines a case in a switch statement",
+      "params": [{ "name": "value", "type": ":any" }, { "name": "condition", "type": ":block" }],
+      "returns": ":any"
+    },
+    "do": {
+      "signature": "do block :block -> :any",
+      "description": "Executes a block and returns its result",
+      "params": [{ "name": "block", "type": ":block" }],
+      "returns": ":any"
+    },
+    "try": {
+      "signature": "try block :block -> :any",
+      "description": "Executes a block and catches errors",
+      "params": [{ "name": "block", "type": ":block" }],
+      "returns": ":any"
+    },
+    "break": {
+      "signature": "break -> :nothing",
+      "description": "Exits from a loop",
+      "params": [],
+      "returns": ":nothing"
+    },
+    "continue": {
+      "signature": "continue -> :nothing",
+      "description": "Skips to next iteration of a loop",
+      "params": [],
+      "returns": ":nothing"
+    },
+    "loop": {
+      "signature": "loop collection :block/:range action :block -> :null",
+      "description": "Iterates over a collection",
+      "params": [{ "name": "collection", "type": ":block/:range" }, { "name": "action", "type": ":block" }],
+      "returns": ":null"
+    },
+    "while": {
+      "signature": "while condition :block action :block -> :null",
+      "description": "Executes action while condition is true",
+      "params": [{ "name": "condition", "type": ":block" }, { "name": "action", "type": ":block" }],
+      "returns": ":null"
+    },
+    "until": {
+      "signature": "until condition :block action :block -> :null",
+      "description": "Executes action until condition is true",
+      "params": [{ "name": "condition", "type": ":block" }, { "name": "action", "type": ":block" }],
+      "returns": ":null"
+    },
+    "function": {
+      "signature": "function params :block/:literal body :block -> :function",
+      "description": "Creates a function",
+      "params": [{ "name": "params", "type": ":block/:literal" }, { "name": "body", "type": ":block" }],
+      "returns": ":function"
+    },
+    "method": {
+      "signature": "method params :block body :block -> :method",
+      "description": "Creates a method with this context",
+      "params": [{ "name": "params", "type": ":block" }, { "name": "body", "type": ":block" }],
+      "returns": ":method"
+    },
+    "call": {
+      "signature": "call fn :function args :block -> :any",
+      "description": "Calls a function with arguments",
+      "params": [{ "name": "fn", "type": ":function" }, { "name": "args", "type": ":block" }],
+      "returns": ":any"
+    },
+    "print": {
+      "signature": "print value :any -> :null",
+      "description": "Prints a value to stdout with newline",
+      "params": [{ "name": "value", "type": ":any" }],
+      "returns": ":null"
+    },
+    "prints": {
+      "signature": "prints value :any -> :null",
+      "description": "Prints a value to stdout without newline",
+      "params": [{ "name": "value", "type": ":any" }],
+      "returns": ":null"
+    },
+    "input": {
+      "signature": "input prompt :string -> :string",
+      "description": "Reads a line from stdin",
+      "params": [{ "name": "prompt", "type": ":string" }],
+      "returns": ":string"
+    },
+    "read": {
+      "signature": "read path :string -> :string",
+      "description": "Reads contents from a file",
+      "params": [{ "name": "path", "type": ":string" }],
+      "returns": ":string"
+    },
+    "write": {
+      "signature": "write path :string content :string -> :null",
+      "description": "Writes content to a file",
+      "params": [{ "name": "path", "type": ":string" }, { "name": "content", "type": ":string" }],
+      "returns": ":null"
+    },
+    "to": {
+      "signature": "to type :type value :any -> :any",
+      "description": "Converts a value to a specified type",
+      "params": [{ "name": "type", "type": ":type" }, { "name": "value", "type": ":any" }],
+      "returns": ":any"
+    },
+    "type": {
+      "signature": "type value :any -> :type",
+      "description": "Returns the type of a value",
+      "params": [{ "name": "value", "type": ":any" }],
+      "returns": ":type"
+    },
+    "define": {
+      "signature": "define name :literal/:type body :block -> :type",
+      "description": "Defines a custom type",
+      "params": [{ "name": "name", "type": ":literal/:type" }, { "name": "body", "type": ":block" }],
+      "returns": ":type"
+    },
+    "is": {
+      "signature": "is value :any type :type -> :logical",
+      "description": "Checks if value is of given type",
+      "params": [{ "name": "value", "type": ":any" }, { "name": "type", "type": ":type" }],
+      "returns": ":logical"
+    },
+    "size": {
+      "signature": "size value :string/:block -> :integer",
+      "description": "Returns the size/length of a collection",
+      "params": [{ "name": "value", "type": ":string/:block" }],
+      "returns": ":integer"
+    },
+    "upper": {
+      "signature": "upper str :string -> :string",
+      "description": "Converts string to uppercase",
+      "params": [{ "name": "str", "type": ":string" }],
+      "returns": ":string"
+    },
+    "lower": {
+      "signature": "lower str :string -> :string",
+      "description": "Converts string to lowercase",
+      "params": [{ "name": "str", "type": ":string" }],
+      "returns": ":string"
+    },
+    "capitalize": {
+      "signature": "capitalize str :string -> :string",
+      "description": "Capitalizes first letter of string",
+      "params": [{ "name": "str", "type": ":string" }],
+      "returns": ":string"
+    },
+    "split": {
+      "signature": "split str :string delimiter :string -> :block",
+      "description": "Splits string by delimiter",
+      "params": [{ "name": "str", "type": ":string" }, { "name": "delimiter", "type": ":string" }],
+      "returns": ":block"
+    },
+    "join": {
+      "signature": "join collection :block separator :string -> :string",
+      "description": "Joins collection elements with separator",
+      "params": [{ "name": "collection", "type": ":block" }, { "name": "separator", "type": ":string" }],
+      "returns": ":string"
+    },
+    "replace": {
+      "signature": "replace str :string pattern :string replacement :string -> :string",
+      "description": "Replaces pattern with replacement in string",
+      "params": [{ "name": "str", "type": ":string" }, { "name": "pattern", "type": ":string" }, { "name": "replacement", "type": ":string" }],
+      "returns": ":string"
+    },
+    "strip": {
+      "signature": "strip str :string -> :string",
+      "description": "Removes leading and trailing whitespace",
+      "params": [{ "name": "str", "type": ":string" }],
+      "returns": ":string"
+    },
+    "append": {
+      "signature": "append collection :block value :any -> :block",
+      "description": "Appends value to collection",
+      "params": [{ "name": "collection", "type": ":block" }, { "name": "value", "type": ":any" }],
+      "returns": ":block"
+    },
+    "prepend": {
+      "signature": "prepend collection :block value :any -> :block",
+      "description": "Prepends value to collection",
+      "params": [{ "name": "collection", "type": ":block" }, { "name": "value", "type": ":any" }],
+      "returns": ":block"
+    },
+    "first": {
+      "signature": "first collection :block -> :any",
+      "description": "Returns first element of collection",
+      "params": [{ "name": "collection", "type": ":block" }],
+      "returns": ":any"
+    },
+    "last": {
+      "signature": "last collection :block -> :any",
+      "description": "Returns last element of collection",
+      "params": [{ "name": "collection", "type": ":block" }],
+      "returns": ":any"
+    },
+    "get": {
+      "signature": "get collection :block/:dictionary index :integer/:string -> :any",
+      "description": "Gets element at index from collection",
+      "params": [{ "name": "collection", "type": ":block/:dictionary" }, { "name": "index", "type": ":integer/:string" }],
+      "returns": ":any"
+    },
+    "set": {
+      "signature": "set collection :block/:dictionary index :integer/:string value :any -> :null",
+      "description": "Sets element at index in collection",
+      "params": [{ "name": "collection", "type": ":block/:dictionary" }, { "name": "index", "type": ":integer/:string" }, { "name": "value", "type": ":any" }],
+      "returns": ":null"
+    },
+    "map": {
+      "signature": "map collection :block action :block -> :block",
+      "description": "Maps function over collection",
+      "params": [{ "name": "collection", "type": ":block" }, { "name": "action", "type": ":block" }],
+      "returns": ":block"
+    },
+    "filter": {
+      "signature": "filter collection :block predicate :block -> :block",
+      "description": "Filters collection by predicate",
+      "params": [{ "name": "collection", "type": ":block" }, { "name": "predicate", "type": ":block" }],
+      "returns": ":block"
+    },
+    "fold": {
+      "signature": "fold collection :block initial :any action :block -> :any",
+      "description": "Folds collection with accumulator",
+      "params": [{ "name": "collection", "type": ":block" }, { "name": "initial", "type": ":any" }, { "name": "action", "type": ":block" }],
+      "returns": ":any"
+    },
+    "select": {
+      "signature": "select collection :block predicate :block -> :block",
+      "description": "Selects elements matching predicate",
+      "params": [{ "name": "collection", "type": ":block" }, { "name": "predicate", "type": ":block" }],
+      "returns": ":block"
+    },
+    "sort": {
+      "signature": "sort collection :block -> :block",
+      "description": "Sorts collection in ascending order",
+      "params": [{ "name": "collection", "type": ":block" }],
+      "returns": ":block"
+    },
+    "reverse": {
+      "signature": "reverse collection :block/:string -> :block/:string",
+      "description": "Reverses a collection or string",
+      "params": [{ "name": "collection", "type": ":block/:string" }],
+      "returns": ":block/:string"
+    },
+    "unique": {
+      "signature": "unique collection :block -> :block",
+      "description": "Returns unique elements from collection",
+      "params": [{ "name": "collection", "type": ":block" }],
+      "returns": ":block"
+    },
+    "flatten": {
+      "signature": "flatten collection :block -> :block",
+      "description": "Flattens nested collection",
+      "params": [{ "name": "collection", "type": ":block" }],
+      "returns": ":block"
+    },
+    "empty": {
+      "signature": "empty collection :block/:string -> :block/:string",
+      "description": "Returns an empty collection of same type",
+      "params": [{ "name": "collection", "type": ":block/:string" }],
+      "returns": ":block/:string"
+    },
+    "take": {
+      "signature": "take collection :block n :integer -> :block",
+      "description": "Takes first n elements from collection",
+      "params": [{ "name": "collection", "type": ":block" }, { "name": "n", "type": ":integer" }],
+      "returns": ":block"
+    },
+    "drop": {
+      "signature": "drop collection :block n :integer -> :block",
+      "description": "Drops first n elements from collection",
+      "params": [{ "name": "collection", "type": ":block" }, { "name": "n", "type": ":integer" }],
+      "returns": ":block"
+    },
+    "slice": {
+      "signature": "slice collection :block start :integer end :integer -> :block",
+      "description": "Returns slice of collection from start to end",
+      "params": [{ "name": "collection", "type": ":block" }, { "name": "start", "type": ":integer" }, { "name": "end", "type": ":integer" }],
+      "returns": ":block"
+    },
+    "add": {
+      "signature": "add a :numeric b :numeric -> :numeric",
+      "description": "Adds two numbers",
+      "params": [{ "name": "a", "type": ":numeric" }, { "name": "b", "type": ":numeric" }],
+      "returns": ":numeric"
+    },
+    "sub": {
+      "signature": "sub a :numeric b :numeric -> :numeric",
+      "description": "Subtracts b from a",
+      "params": [{ "name": "a", "type": ":numeric" }, { "name": "b", "type": ":numeric" }],
+      "returns": ":numeric"
+    },
+    "mul": {
+      "signature": "mul a :numeric b :numeric -> :numeric",
+      "description": "Multiplies two numbers",
+      "params": [{ "name": "a", "type": ":numeric" }, { "name": "b", "type": ":numeric" }],
+      "returns": ":numeric"
+    },
+    "div": {
+      "signature": "div a :numeric b :numeric -> :numeric",
+      "description": "Divides a by b",
+      "params": [{ "name": "a", "type": ":numeric" }, { "name": "b", "type": ":numeric" }],
+      "returns": ":numeric"
+    },
+    "mod": {
+      "signature": "mod a :integer b :integer -> :integer",
+      "description": "Returns remainder of a divided by b",
+      "params": [{ "name": "a", "type": ":integer" }, { "name": "b", "type": ":integer" }],
+      "returns": ":integer"
+    },
+    "pow": {
+      "signature": "pow base :numeric exponent :numeric -> :numeric",
+      "description": "Raises base to exponent",
+      "params": [{ "name": "base", "type": ":numeric" }, { "name": "exponent", "type": ":numeric" }],
+      "returns": ":numeric"
+    },
+    "sqrt": {
+      "signature": "sqrt n :numeric -> :floating",
+      "description": "Returns square root of n",
+      "params": [{ "name": "n", "type": ":numeric" }],
+      "returns": ":floating"
+    },
+    "abs": {
+      "signature": "abs n :numeric -> :numeric",
+      "description": "Returns absolute value of n",
+      "params": [{ "name": "n", "type": ":numeric" }],
+      "returns": ":numeric"
+    },
+    "neg": {
+      "signature": "neg n :numeric -> :numeric",
+      "description": "Returns negative of n",
+      "params": [{ "name": "n", "type": ":numeric" }],
+      "returns": ":numeric"
+    },
+    "inc": {
+      "signature": "inc n :numeric -> :numeric",
+      "description": "Increments n by 1",
+      "params": [{ "name": "n", "type": ":numeric" }],
+      "returns": ":numeric"
+    },
+    "dec": {
+      "signature": "dec n :numeric -> :numeric",
+      "description": "Decrements n by 1",
+      "params": [{ "name": "n", "type": ":numeric" }],
+      "returns": ":numeric"
+    },
+    "max": {
+      "signature": "max a :numeric b :numeric -> :numeric",
+      "description": "Returns maximum of two numbers",
+      "params": [{ "name": "a", "type": ":numeric" }, { "name": "b", "type": ":numeric" }],
+      "returns": ":numeric"
+    },
+    "min": {
+      "signature": "min a :numeric b :numeric -> :numeric",
+      "description": "Returns minimum of two numbers",
+      "params": [{ "name": "a", "type": ":numeric" }, { "name": "b", "type": ":numeric" }],
+      "returns": ":numeric"
+    },
+    "sum": {
+      "signature": "sum collection :block -> :numeric",
+      "description": "Returns sum of all numbers in collection",
+      "params": [{ "name": "collection", "type": ":block" }],
+      "returns": ":numeric"
+    },
+    "product": {
+      "signature": "product collection :block -> :numeric",
+      "description": "Returns product of all numbers in collection",
+      "params": [{ "name": "collection", "type": ":block" }],
+      "returns": ":numeric"
+    },
+    "average": {
+      "signature": "average collection :block -> :floating",
+      "description": "Returns average of numbers in collection",
+      "params": [{ "name": "collection", "type": ":block" }],
+      "returns": ":floating"
+    },
+    "median": {
+      "signature": "median collection :block -> :numeric",
+      "description": "Returns median of numbers in collection",
+      "params": [{ "name": "collection", "type": ":block" }],
+      "returns": ":numeric"
+    },
+    "random": {
+      "signature": "random max :integer -> :integer",
+      "description": "Returns random integer from 0 to max-1",
+      "params": [{ "name": "max", "type": ":integer" }],
+      "returns": ":integer"
+    },
+    "sin": {
+      "signature": "sin angle :numeric -> :floating",
+      "description": "Returns sine of angle (in radians)",
+      "params": [{ "name": "angle", "type": ":numeric" }],
+      "returns": ":floating"
+    },
+    "cos": {
+      "signature": "cos angle :numeric -> :floating",
+      "description": "Returns cosine of angle (in radians)",
+      "params": [{ "name": "angle", "type": ":numeric" }],
+      "returns": ":floating"
+    },
+    "tan": {
+      "signature": "tan angle :numeric -> :floating",
+      "description": "Returns tangent of angle (in radians)",
+      "params": [{ "name": "angle", "type": ":numeric" }],
+      "returns": ":floating"
+    },
+    "and": {
+      "signature": "and a :logical b :logical -> :logical",
+      "description": "Logical AND of two boolean values",
+      "params": [{ "name": "a", "type": ":logical" }, { "name": "b", "type": ":logical" }],
+      "returns": ":logical"
+    },
+    "or": {
+      "signature": "or a :logical b :logical -> :logical",
+      "description": "Logical OR of two boolean values",
+      "params": [{ "name": "a", "type": ":logical" }, { "name": "b", "type": ":logical" }],
+      "returns": ":logical"
+    },
+    "not": {
+      "signature": "not value :logical -> :logical",
+      "description": "Logical NOT of boolean value",
+      "params": [{ "name": "value", "type": ":logical" }],
+      "returns": ":logical"
+    },
+    "equal?": {
+      "signature": "equal? a :any b :any -> :logical",
+      "description": "Checks if two values are equal",
+      "params": [{ "name": "a", "type": ":any" }, { "name": "b", "type": ":any" }],
+      "returns": ":logical"
+    },
+    "greater?": {
+      "signature": "greater? a :any b :any -> :logical",
+      "description": "Checks if a is greater than b",
+      "params": [{ "name": "a", "type": ":any" }, { "name": "b", "type": ":any" }],
+      "returns": ":logical"
+    },
+    "less?": {
+      "signature": "less? a :any b :any -> :logical",
+      "description": "Checks if a is less than b",
+      "params": [{ "name": "a", "type": ":any" }, { "name": "b", "type": ":any" }],
+      "returns": ":logical"
+    },
+    "keys": {
+      "signature": "keys dict :dictionary -> :block",
+      "description": "Returns all keys from dictionary",
+      "params": [{ "name": "dict", "type": ":dictionary" }],
+      "returns": ":block"
+    },
+    "values": {
+      "signature": "values dict :dictionary -> :block",
+      "description": "Returns all values from dictionary",
+      "params": [{ "name": "dict", "type": ":dictionary" }],
+      "returns": ":block"
+    },
+    "has": {
+      "signature": "has dict :dictionary key :string -> :logical",
+      "description": "Checks if dictionary has key",
+      "params": [{ "name": "dict", "type": ":dictionary" }, { "name": "key", "type": ":string" }],
+      "returns": ":logical"
+    }
+  },
+  "lastUpdate": "2025-02-14T00:00:00.000Z",
+  "version": "1.0"
+}

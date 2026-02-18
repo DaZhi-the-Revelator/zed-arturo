@@ -1,3 +1,7 @@
+[TOC]
+
+
+
 # Arturo Language Support for Zed
 
 A comprehensive language extension for [Arturo](https://arturo-lang.io/) in [Zed](https://zed.dev/), providing intelligent code editing features through a custom Language Server Protocol (LSP) implementation.
@@ -11,6 +15,19 @@ A comprehensive language extension for [Arturo](https://arturo-lang.io/) in [Zed
 Please note Zed keymaps may have changed - use the Command Palette, Keymap and Key Context View when needed
 
 ### ✅ Core Language Intelligence
+
+- **Diagnostics**: Comprehensive code validation including:
+  - Undefined variables
+  - Unmatched brackets
+  - Type mismatches in binary operations
+  - Duplicate variable definitions
+  - Unused variables
+  - Unreachable code after return statements
+  - Invalid type annotations
+  - Division by zero
+  - Wrong number of function arguments
+  - Empty function bodies
+  - Type comparison warnings
 
 - **Type Checking**: Validates type annotations and checks for type compatibility based on Arturo's comprehensive type system
 - **Go-to-Definition**: Navigate to variable and function definitions with a single keystroke
@@ -27,6 +44,10 @@ Please note Zed keymaps may have changed - use the Command Palette, Keymap and K
   - Named colors (`#red`, `#blue`, `#cyan`, etc.)
 
 - **Signature Help**: Real-time parameter hints as you type function calls with active parameter tracking
+  - **Dynamic Signature Generation (v2.0+)**: Automatically indexes all 521+ built-in Arturo functions
+  - **Stale-While-Revalidate Caching**: Instant startup with background updates every 24 hours
+  - **Offline-First**: Works seamlessly without internet connection using seed cache
+  - **Expandable Coverage**: From 80 manually-defined functions to 521+ auto-indexed functions
 
 - **Find All References**: Scope-aware reference finding that:
   - Excludes false positives (comments, strings, literals)
@@ -234,17 +255,18 @@ The extension works out of the box with no configuration required. The LSP start
 You can selectively enable or disable specific LSP features through your Zed `settings.json`:
 
 ```json
-{
-  "lsp": {
-    "arturo-lsp": {
-      "settings": {
-        "completions": "off",  // Disable code completion
-        "signatures": "on",    // Enable signature help (default)
-        "formatting": "off",   // Disable document formatting
-        "highlights": "on"     // Enable document highlights (default)
-      }
-    }
-  }
+"lsp": {
+	"arturo-lsp": {
+	  "initialization_options": {
+	    "settings": {
+	      "completion": "on",			// Disable code completion
+	      "signatures": "on",			// Enable signature help (default)
+	      "formatting": "on",			// Disable document formatting
+	      "highlights": "on",			// Enable document highlights (default)
+	      "advancedServerLogs": "on"	// Enable advanced server logs
+	    }
+	  }
+	}
 }
 ```
 
@@ -254,8 +276,9 @@ You can selectively enable or disable specific LSP features through your Zed `se
 - `signatures` - Signature help (parameter hints)
 - `formatting` - Document formatting
 - `highlights` - Document highlights (symbol occurrences)
+- `advancedserverlogs` - Advanced debug LSP server logs for troubleshooting
 
-**Default Behavior**: All features are enabled by default. Set a feature to `"off"` to disable it.
+**Default Behavior**: All features except `advancedserverlogs` are enabled by default. Set a feature to `"off"` to disable it.
 
 **IMPORTANT**: Settings changes require a **Zed restart** to take effect. This is because settings are only read when the LSP server initializes.
 
@@ -265,6 +288,7 @@ You can selectively enable or disable specific LSP features through your Zed `se
 - Disable `signatures` if parameter hints feel intrusive
 - Disable `formatting` if you have custom formatting preferences
 - Disable `highlights` if you find automatic highlighting distracting
+- Enable `advancedserverlogs` when troubleshooting LSP server initialization issues
 
 **How to Change Settings**:
 
@@ -357,10 +381,41 @@ Contributions are welcome! Please feel free to submit pull requests or open issu
 
 ### v2.0-dev (In Development)
 
+- 🚀 **NEW: Dynamic Signature Generation** - Revolutionary signature indexing system
+  - **Coverage Expansion**: From 80 manually-defined to 521+ auto-indexed Arturo functions
+  - **Stale-While-Revalidate Pattern**: Instant startup with background updates every 24 hours
+  - **Offline-First Design**: Works seamlessly without internet using seed cache
+  - **Automatic Updates**: Fetches latest signatures from Arturo documentation
+  - **Zero Configuration**: Works out of the box with no setup required
+  - **Intelligent Caching**: JSON-based cache with timestamp tracking
+  - **Seed Cache**: Ships with 80 most popular functions for immediate first-run experience
+  - **Expandable**: Can index user-defined functions and custom documentation sources
+  - **Performance**: Non-blocking initialization, minimal memory footprint
+  - **Architecture**: Dedicated `SignatureIndexer` module with comprehensive API
+
 - 🔧 **ENHANCEMENT: Feature Toggles** - Added ability to enable/disable LSP features via settings
   - Completions, signatures, formatting, and highlights can be toggled on/off
   - Settings are read at LSP initialization
   - Requires Zed restart to apply changes
+
+- ✨ **NEW: Code Actions** - Quick fixes and refactorings
+  - Define undefined variables
+  - Add type annotations to variables
+  - Extract code to function
+  - Fix type mismatches
+
+- ✨ **ENHANCED: Comprehensive Diagnostics** - Expanded validation beyond basic type checking
+  - Undefined variables (warning)
+  - Unmatched brackets (error)
+  - Type mismatches in binary operations (error)
+  - Duplicate variable definitions (warning)
+  - Unused variables (hint)
+  - Unreachable code after return statements (warning)
+  - Invalid type annotations (error)
+  - Division by zero (warning)
+  - Wrong number of function arguments (error)
+  - Empty function bodies (warning)
+  - Type comparison warnings (warning)
 
 ### v0.5.5
 
