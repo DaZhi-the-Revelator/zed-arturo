@@ -9129,6 +9129,283 @@ var init_main = __esm({
   }
 });
 
+// lib/signature-indexer.js
+var require_signature_indexer = __commonJS({
+  "lib/signature-indexer.js"(exports2, module2) {
+    var fs = require("fs");
+    var path = require("path");
+    var https = require("https");
+    var SignatureIndexer2 = class {
+      constructor(logger) {
+        this.logger = logger || console;
+        this.signatures = /* @__PURE__ */ new Map();
+        this.cacheDir = path.join(__dirname, "..", ".cache");
+        this.cacheFile = path.join(this.cacheDir, "signatures.json");
+        this.seedCacheFile = path.join(__dirname, "..", "seed-cache.json");
+        this.isInitialized = false;
+        this.lastUpdate = null;
+        this.updateInProgress = false;
+        this.docSources = [
+          "https://arturo-lang.io/documentation/library/"
+          // Main library reference page
+        ];
+      }
+      /**
+       * Initialize the indexer with stale-while-revalidate pattern
+       */
+      async initialize() {
+        if (this.isInitialized) {
+          return;
+        }
+        this.logger.log("[SignatureIndexer] Initializing...");
+        await this.loadCache();
+        this.scheduleBackgroundUpdate();
+        this.isInitialized = true;
+        this.logger.log(`[SignatureIndexer] Initialized with ${this.signatures.size} signatures`);
+      }
+      /**
+       * Load signatures from cache (or seed cache if no cache exists)
+       */
+      async loadCache() {
+        try {
+          if (fs.existsSync(this.cacheFile)) {
+            const cacheData = JSON.parse(fs.readFileSync(this.cacheFile, "utf8"));
+            this.signatures = new Map(Object.entries(cacheData.signatures));
+            this.lastUpdate = new Date(cacheData.lastUpdate);
+            this.logger.log(`[SignatureIndexer] Loaded ${this.signatures.size} signatures from cache`);
+            return;
+          }
+        } catch (err) {
+          this.logger.log(`[SignatureIndexer] Failed to load cache: ${err.message}`);
+        }
+        try {
+          if (fs.existsSync(this.seedCacheFile)) {
+            const seedData = JSON.parse(fs.readFileSync(this.seedCacheFile, "utf8"));
+            this.signatures = new Map(Object.entries(seedData.signatures));
+            this.logger.log(`[SignatureIndexer] Loaded ${this.signatures.size} signatures from seed cache`);
+            return;
+          }
+        } catch (err) {
+          this.logger.log(`[SignatureIndexer] Failed to load seed cache: ${err.message}`);
+        }
+        this.logger.log("[SignatureIndexer] No cache available, will fetch from network");
+      }
+      /**
+       * Schedule a background update (non-blocking)
+       */
+      scheduleBackgroundUpdate() {
+        if (this.updateInProgress) {
+          return;
+        }
+        const now = /* @__PURE__ */ new Date();
+        if (this.lastUpdate) {
+          const hoursSinceUpdate = (now - this.lastUpdate) / (1e3 * 60 * 60);
+          if (hoursSinceUpdate < 24) {
+            this.logger.log("[SignatureIndexer] Cache is fresh, skipping update");
+            return;
+          }
+        }
+        this.updateInProgress = true;
+        this.logger.log("[SignatureIndexer] Starting background update...");
+        this.fetchAndUpdateSignatures().then(() => {
+          this.logger.log("[SignatureIndexer] Background update completed successfully");
+        }).catch((err) => {
+          this.logger.log(`[SignatureIndexer] Background update failed: ${err.message}`);
+        }).finally(() => {
+          this.updateInProgress = false;
+        });
+      }
+      /**
+       * Fetch signatures from Arturo documentation and update cache
+       */
+      async fetchAndUpdateSignatures() {
+        try {
+          const newSignatures = await this.fetchSignaturesFromDocs();
+          if (newSignatures.size > 0) {
+            newSignatures.forEach((sig, name) => {
+              this.signatures.set(name, sig);
+            });
+            await this.saveCache();
+            this.logger.log(`[SignatureIndexer] Updated with ${newSignatures.size} new signatures`);
+          }
+        } catch (err) {
+          throw new Error(`Failed to fetch signatures: ${err.message}`);
+        }
+      }
+      /**
+       * Fetch signatures from Arturo documentation
+       */
+      async fetchSignaturesFromDocs() {
+        const signatures = /* @__PURE__ */ new Map();
+        try {
+          const libraryMd = await this.fetchUrl(this.docSources[0]);
+          const parsed = this.parseLibraryMarkdown(libraryMd);
+          parsed.forEach((sig, name) => signatures.set(name, sig));
+          this.logger.log(`[SignatureIndexer] Parsed ${signatures.size} signatures from documentation`);
+        } catch (err) {
+          this.logger.log(`[SignatureIndexer] Failed to fetch from docs: ${err.message}`);
+        }
+        return signatures;
+      }
+      /**
+       * Fetch URL content via HTTPS
+       */
+      fetchUrl(url) {
+        return new Promise((resolve, reject) => {
+          https.get(url, { timeout: 1e4 }, (res) => {
+            if (res.statusCode !== 200) {
+              reject(new Error(`HTTP ${res.statusCode}`));
+              return;
+            }
+            let data = "";
+            res.on("data", (chunk) => data += chunk);
+            res.on("end", () => resolve(data));
+          }).on("error", reject).on("timeout", () => {
+            reject(new Error("Request timeout"));
+          });
+        });
+      }
+      /**
+       * Parse Arturo library markdown to extract function signatures
+       * 
+       * Format in library.md:
+       * ## functionName
+       * **Signature**: `functionName param1 :type1 param2 :type2 -> :returnType`
+       * **Description**: Description text
+       */
+      parseLibraryMarkdown(markdown) {
+        const signatures = /* @__PURE__ */ new Map();
+        const lines = markdown.split("\n");
+        let currentFunc = null;
+        let currentSig = null;
+        let currentDesc = null;
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (line.startsWith("## ") && !line.startsWith("## ")) {
+            if (currentFunc && currentSig) {
+              signatures.set(currentFunc, {
+                signature: currentSig,
+                description: currentDesc || "",
+                params: this.parseParams(currentSig),
+                returns: this.parseReturnType(currentSig)
+              });
+            }
+            currentFunc = line.substring(3).trim();
+            currentSig = null;
+            currentDesc = null;
+          } else if (line.includes("**Signature**:")) {
+            const match = line.match(/`([^`]+)`/);
+            if (match) {
+              currentSig = match[1];
+            }
+          } else if (line.includes("**Description**:")) {
+            currentDesc = line.split("**Description**:")[1].trim();
+          }
+        }
+        if (currentFunc && currentSig) {
+          signatures.set(currentFunc, {
+            signature: currentSig,
+            description: currentDesc || "",
+            params: this.parseParams(currentSig),
+            returns: this.parseReturnType(currentSig)
+          });
+        }
+        return signatures;
+      }
+      /**
+       * Parse parameters from a signature string
+       * Example: "print value :any -> :null" => [{ name: 'value', type: ':any' }]
+       */
+      parseParams(signature) {
+        const params = [];
+        const parts = signature.split("->");
+        if (parts.length === 0)
+          return params;
+        const paramPart = parts[0].trim();
+        const tokens = paramPart.split(/\s+/);
+        if (tokens.length < 2)
+          return params;
+        for (let i = 1; i < tokens.length; i++) {
+          const token = tokens[i];
+          if (token.startsWith(":")) {
+            if (params.length > 0) {
+              params[params.length - 1].type = token;
+            }
+          } else {
+            params.push({ name: token, type: ":any" });
+          }
+        }
+        return params;
+      }
+      /**
+       * Parse return type from signature string
+       * Example: "print value :any -> :null" => ":null"
+       */
+      parseReturnType(signature) {
+        const parts = signature.split("->");
+        if (parts.length < 2)
+          return ":any";
+        return parts[1].trim();
+      }
+      /**
+       * Save signatures to cache file
+       */
+      async saveCache() {
+        try {
+          if (!fs.existsSync(this.cacheDir)) {
+            fs.mkdirSync(this.cacheDir, { recursive: true });
+          }
+          const cacheData = {
+            signatures: Object.fromEntries(this.signatures),
+            lastUpdate: (/* @__PURE__ */ new Date()).toISOString(),
+            version: "1.0"
+          };
+          fs.writeFileSync(this.cacheFile, JSON.stringify(cacheData, null, 2));
+          this.logger.log(`[SignatureIndexer] Saved ${this.signatures.size} signatures to cache`);
+        } catch (err) {
+          this.logger.log(`[SignatureIndexer] Failed to save cache: ${err.message}`);
+        }
+      }
+      /**
+       * Get signature for a function
+       */
+      getSignature(functionName) {
+        return this.signatures.get(functionName) || null;
+      }
+      /**
+       * Get all function names
+       */
+      getAllFunctionNames() {
+        return Array.from(this.signatures.keys());
+      }
+      /**
+       * Check if function exists in index
+       */
+      hasFunction(functionName) {
+        return this.signatures.has(functionName);
+      }
+      /**
+       * Add a custom signature (for user-defined functions)
+       */
+      addSignature(functionName, signature) {
+        this.signatures.set(functionName, signature);
+      }
+      /**
+       * Get statistics about the index
+       */
+      getStats() {
+        return {
+          totalSignatures: this.signatures.size,
+          lastUpdate: this.lastUpdate,
+          isInitialized: this.isInitialized,
+          updateInProgress: this.updateInProgress
+        };
+      }
+    };
+    module2.exports = SignatureIndexer2;
+  }
+});
+
 // server.js
 var {
   createConnection,
@@ -9172,6 +9449,7 @@ var {
   CodeActionKind
 } = require_node3();
 var { TextDocument: TextDocument2 } = (init_main(), __toCommonJS(main_exports));
+var SignatureIndexer = require_signature_indexer();
 var connection = createConnection(ProposedFeatures.all);
 var documents = new TextDocuments(TextDocument2);
 var hasConfigurationCapability = false;
@@ -9181,6 +9459,16 @@ var enableCompletions = true;
 var enableSignatures = true;
 var enableFormatting = true;
 var enableHighlights = true;
+var signatureIndexer = new SignatureIndexer(console);
+signatureIndexer.initialize().catch((err) => {
+  console.error("[SignatureIndexer] Initialization error:", err);
+});
+function getFunctionInfo(functionName) {
+  const indexedSig = signatureIndexer.getSignature(functionName);
+  if (indexedSig)
+    return indexedSig;
+  return BUILTIN_FUNCTIONS[functionName] || null;
+}
 connection.onInitialize((params) => {
   const capabilities = params.capabilities;
   hasConfigurationCapability = !!(capabilities.workspace && !!capabilities.workspace.configuration);
@@ -11385,8 +11673,8 @@ Function attribute parameter`
     }
   }
   if (BUILTIN_NAMES.has(word)) {
-    if (BUILTIN_FUNCTIONS[word]) {
-      const funcInfo = BUILTIN_FUNCTIONS[word];
+    const funcInfo = getFunctionInfo(word);
+    if (funcInfo) {
       return {
         contents: {
           kind: MarkupKind.Markdown,
@@ -11518,14 +11806,25 @@ connection.onCompletion((params) => {
       }
     }
   }
-  BUILTIN_NAMES.forEach((funcName) => {
-    const funcInfo = BUILTIN_FUNCTIONS[funcName];
+  signatureIndexer.getAllFunctionNames().forEach((funcName) => {
+    const funcInfo = signatureIndexer.getSignature(funcName);
     items.push({
       label: funcName,
       kind: CompletionItemKind.Function,
       detail: funcInfo ? funcInfo.signature : "Builtin function",
       documentation: funcInfo ? funcInfo.description : "Arturo builtin function"
     });
+  });
+  BUILTIN_NAMES.forEach((funcName) => {
+    if (!signatureIndexer.hasFunction(funcName)) {
+      const funcInfo = BUILTIN_FUNCTIONS[funcName];
+      items.push({
+        label: funcName,
+        kind: CompletionItemKind.Function,
+        detail: funcInfo ? funcInfo.signature : "Builtin function",
+        documentation: funcInfo ? funcInfo.description : "Arturo builtin function"
+      });
+    }
   });
   Object.keys(ARTURO_TYPES).forEach((typeName) => {
     const typeInfo = ARTURO_TYPES[typeName];
@@ -11585,7 +11884,7 @@ connection.onSignatureHelp((params) => {
   const fullFuncName = funcMatch[1];
   const paramsText = funcMatch[2] || "";
   const baseFuncName = fullFuncName.split(".")[0];
-  const funcInfo = BUILTIN_FUNCTIONS[baseFuncName];
+  const funcInfo = getFunctionInfo(baseFuncName);
   if (!funcInfo || !funcInfo.params)
     return null;
   const args = paramsText.trim().split(/\s+/).filter((s) => s.length > 0);

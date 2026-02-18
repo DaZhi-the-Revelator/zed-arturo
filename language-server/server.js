@@ -73,6 +73,7 @@ const {
 } = require('vscode-languageserver/node');
 
 const { TextDocument } = require('vscode-languageserver-textdocument');
+const SignatureIndexer = require('./lib/signature-indexer');
 
 // Create a connection for the server
 const connection = createConnection(ProposedFeatures.all);
@@ -89,6 +90,22 @@ let enableCompletions = true;
 let enableSignatures = true;
 let enableFormatting = true;
 let enableHighlights = true;
+
+// Initialize signature indexer (stale-while-revalidate, offline-first)
+const signatureIndexer = new SignatureIndexer(console);
+signatureIndexer.initialize().catch(err => {
+    console.error('[SignatureIndexer] Initialization error:', err);
+});
+
+/**
+ * Helper: Get function info from indexer first, then fall back to BUILTIN_FUNCTIONS.
+ * This ensures the 80 seed functions always work even if the indexer fails.
+ */
+function getFunctionInfo(functionName) {
+    const indexedSig = signatureIndexer.getSignature(functionName);
+    if (indexedSig) return indexedSig;
+    return BUILTIN_FUNCTIONS[functionName] || null;
+}
 
 /**
  * Initialize the language server
@@ -1857,8 +1874,8 @@ connection.onHover((params) => {
 
     // Check if it's a builtin function
     if (BUILTIN_NAMES.has(word)) {
-        if (BUILTIN_FUNCTIONS[word]) {
-            const funcInfo = BUILTIN_FUNCTIONS[word];
+        const funcInfo = getFunctionInfo(word);
+        if (funcInfo) {
             return {
                 contents: {
                     kind: MarkupKind.Markdown,
@@ -1999,15 +2016,29 @@ connection.onCompletion((params) => {
         }
     }
 
-    // Add all builtin functions
-    BUILTIN_NAMES.forEach(funcName => {
-        const funcInfo = BUILTIN_FUNCTIONS[funcName];
+    // Add all functions from the signature indexer (seed cache + any fetched updates)
+    signatureIndexer.getAllFunctionNames().forEach(funcName => {
+        const funcInfo = signatureIndexer.getSignature(funcName);
         items.push({
             label: funcName,
             kind: CompletionItemKind.Function,
             detail: funcInfo ? funcInfo.signature : 'Builtin function',
             documentation: funcInfo ? funcInfo.description : 'Arturo builtin function'
         });
+    });
+
+    // Fallback: add any BUILTIN_NAMES not yet in the indexer
+    // (covers edge case where indexer failed to initialize)
+    BUILTIN_NAMES.forEach(funcName => {
+        if (!signatureIndexer.hasFunction(funcName)) {
+            const funcInfo = BUILTIN_FUNCTIONS[funcName];
+            items.push({
+                label: funcName,
+                kind: CompletionItemKind.Function,
+                detail: funcInfo ? funcInfo.signature : 'Builtin function',
+                documentation: funcInfo ? funcInfo.description : 'Arturo builtin function'
+            });
+        }
     });
 
     // Add all types
@@ -2086,7 +2117,7 @@ connection.onSignatureHelp((params) => {
     const baseFuncName = fullFuncName.split('.')[0];
 
     // Look up function info
-    const funcInfo = BUILTIN_FUNCTIONS[baseFuncName];
+    const funcInfo = getFunctionInfo(baseFuncName);
     if (!funcInfo || !funcInfo.params) return null;
 
     // Count how many parameters have been typed
