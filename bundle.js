@@ -9365,14 +9365,59 @@ var require_nim_parser = __commonJS({
       }
       return result;
     }
-    async function parseLibraryFromGitHub(logger, onProgress) {
+    async function getLibraryFileSHAs() {
+      const url = `${GITHUB_API_ROOT}/repos/${REPO}/git/trees/${BRANCH}?recursive=1`;
+      const json = await fetchUrl(url, { "Accept": "application/vnd.github.v3+json" });
+      const data = JSON.parse(json);
+      const shas = /* @__PURE__ */ new Map();
+      const prefix = LIBRARY_PATH + "/";
+      for (const item of data.tree) {
+        if (item.type === "blob" && item.path.startsWith(prefix) && item.path.endsWith(".nim") && !item.path.slice(prefix.length).includes("/")) {
+          const filename = item.path.slice(prefix.length);
+          shas.set(filename, item.sha);
+        }
+      }
+      return shas;
+    }
+    async function parseLibraryFromGitHub(logger, knownSHAs, existingSignatures, onProgress) {
       const log = logger || console.log;
-      log("[NimParser] Fetching library file list from GitHub...");
-      const files = await getLibraryFileList();
-      log(`[NimParser] Found ${files.length} library files`);
-      const signatures = /* @__PURE__ */ new Map();
+      log("[NimParser] Fetching library file SHAs from GitHub...");
+      let currentSHAs;
+      try {
+        currentSHAs = await getLibraryFileSHAs();
+        log(`[NimParser] Got SHAs for ${currentSHAs.size} library files`);
+      } catch (err) {
+        log(`[NimParser] Trees API failed (${err.message}), falling back to full fetch`);
+        currentSHAs = null;
+      }
+      let filesToFetch;
+      if (!currentSHAs) {
+        filesToFetch = await getLibraryFileList();
+        filesToFetch = filesToFetch.map((f) => ({ ...f, changed: true }));
+      } else {
+        filesToFetch = [];
+        for (const [filename, sha] of currentSHAs) {
+          const changed = !knownSHAs || knownSHAs.get(filename) !== sha;
+          filesToFetch.push({
+            name: filename,
+            url: `${GITHUB_RAW_ROOT}/${REPO}/${BRANCH}/${LIBRARY_PATH}/${filename}`,
+            sha,
+            changed
+          });
+        }
+        const changedCount = filesToFetch.filter((f) => f.changed).length;
+        log(`[NimParser] ${changedCount} of ${filesToFetch.length} files changed since last fetch`);
+      }
+      const signatures = new Map(existingSignatures || []);
       let done = 0;
-      for (const file of files) {
+      let fetched = 0;
+      for (const file of filesToFetch) {
+        if (!file.changed) {
+          done++;
+          if (onProgress)
+            onProgress(done, filesToFetch.length, file.name);
+          continue;
+        }
         const moduleName = file.name.replace(/\.nim$/, "");
         try {
           const source = await fetchUrl(file.url);
@@ -9387,17 +9432,18 @@ var require_nim_parser = __commonJS({
               module: f.module
             });
           });
+          fetched++;
           done++;
           log(`[NimParser] Parsed ${file.name}: ${funcs.length} functions (total: ${signatures.size})`);
           if (onProgress)
-            onProgress(done, files.length, file.name);
+            onProgress(done, filesToFetch.length, file.name);
         } catch (err) {
           log(`[NimParser] Warning: failed to parse ${file.name}: ${err.message}`);
           done++;
         }
       }
-      log(`[NimParser] Complete. ${signatures.size} functions extracted from ${done} files.`);
-      return signatures;
+      log(`[NimParser] Complete. Fetched ${fetched} changed files. ${signatures.size} total functions.`);
+      return { signatures, fileSHAs: currentSHAs || /* @__PURE__ */ new Map() };
     }
     function parseNimSource(source, moduleName = "unknown") {
       const funcs = parseNimFile(source, moduleName);
@@ -9418,6 +9464,280 @@ var require_nim_parser = __commonJS({
   }
 });
 
+// lib/workspace-indexer.js
+var require_workspace_indexer = __commonJS({
+  "lib/workspace-indexer.js"(exports2, module2) {
+    "use strict";
+    var fs = require("fs");
+    var path = require("path");
+    function stripComments2(text) {
+      return text.split("\n").map((line) => {
+        let inString = false;
+        let stringChar = null;
+        for (let i = 0; i < line.length; i++) {
+          const ch = line[i];
+          const prev = i > 0 ? line[i - 1] : "";
+          if (!inString) {
+            if (ch === '"' || ch === "{" || ch === "\xAB") {
+              inString = true;
+              stringChar = ch;
+            } else if (ch === ";") {
+              return line.substring(0, i);
+            }
+          } else {
+            if (stringChar === '"' && ch === '"' && prev !== "\\" || stringChar === "{" && ch === "}" || stringChar === "\xAB" && ch === "\xBB") {
+              inString = false;
+              stringChar = null;
+            }
+          }
+        }
+        return line;
+      }).join("\n");
+    }
+    function extractParams(defValue) {
+      const blockMatch = defValue.match(/(?:function|method|\$)\s*\[([^\]]*)\]/);
+      if (blockMatch) {
+        return blockMatch[1].trim().split(/\s+/).map((p) => p.replace(/:[a-zA-Z]+/g, "").trim()).filter((p) => p && !p.startsWith(":"));
+      }
+      const singleMatch = defValue.match(/(?:function|method)\s+'(\w+)/);
+      if (singleMatch)
+        return [singleMatch[1]];
+      return [];
+    }
+    function parseArtFile(filePath) {
+      let source;
+      try {
+        source = fs.readFileSync(filePath, "utf8");
+      } catch {
+        return { functions: /* @__PURE__ */ new Map(), variables: /* @__PURE__ */ new Map() };
+      }
+      const clean = stripComments2(source);
+      const rawLines = source.split("\n");
+      const cleanLines = clean.split("\n");
+      const functions = /* @__PURE__ */ new Map();
+      const variables = /* @__PURE__ */ new Map();
+      cleanLines.forEach((line, lineIndex) => {
+        const assignMatch = line.match(/^(\w[\w-]*)\s*:\s*(.+)/);
+        if (!assignMatch)
+          return;
+        const name = assignMatch[1];
+        const value = assignMatch[2].trim();
+        const col = line.indexOf(name);
+        let docComment = "";
+        if (lineIndex > 0) {
+          const prevRaw = rawLines[lineIndex - 1].trim();
+          if (prevRaw.startsWith(";")) {
+            docComment = prevRaw.replace(/^;\s*/, "");
+          }
+        }
+        if (value.startsWith("function") || value.startsWith("$") || value.startsWith("method")) {
+          functions.set(name, {
+            line: lineIndex,
+            column: col,
+            params: extractParams(value),
+            docComment,
+            filePath
+          });
+        } else {
+          variables.set(name, {
+            line: lineIndex,
+            column: col,
+            type: inferSimpleType(value),
+            filePath
+          });
+        }
+      });
+      return { functions, variables };
+    }
+    function inferSimpleType(value) {
+      value = value.trim();
+      if (/^-?\d+$/.test(value))
+        return ":integer";
+      if (/^-?\d+\.\d+$/.test(value))
+        return ":floating";
+      if (/^(true|false|maybe)$/.test(value))
+        return ":logical";
+      if (value === "null")
+        return ":null";
+      if (value.startsWith('"') || value.startsWith("{"))
+        return ":string";
+      if (value.startsWith("["))
+        return ":block";
+      if (value.startsWith("#["))
+        return ":dictionary";
+      if (value.startsWith("function") || value.startsWith("$"))
+        return ":function";
+      if (value.startsWith("method"))
+        return ":method";
+      if (/^#([0-9a-fA-F]{6}|[a-z]+)$/.test(value))
+        return ":color";
+      if (value.includes(".."))
+        return ":range";
+      return ":any";
+    }
+    var WorkspaceIndexer = class {
+      constructor(logger) {
+        this.logger = logger || console;
+        this.fileIndex = /* @__PURE__ */ new Map();
+        this.functions = /* @__PURE__ */ new Map();
+        this.variables = /* @__PURE__ */ new Map();
+        this.rootPaths = [];
+      }
+      // ── Public API ────────────────────────────────────────────────────────────
+      /**
+       * Scan all .art files under the given workspace root paths.
+       * Non-blocking: yields between files so the LSP stays responsive.
+       */
+      async indexWorkspace(rootPaths) {
+        this.rootPaths = rootPaths || [];
+        if (this.rootPaths.length === 0) {
+          this.logger.log("[WorkspaceIndexer] No workspace folders \u2014 skipping scan");
+          return;
+        }
+        this.logger.log(`[WorkspaceIndexer] Scanning ${this.rootPaths.length} workspace folder(s)...`);
+        const artFiles = [];
+        for (const root of this.rootPaths) {
+          this._collectArtFiles(root, artFiles);
+        }
+        this.logger.log(`[WorkspaceIndexer] Found ${artFiles.length} .art file(s)`);
+        for (const filePath of artFiles) {
+          this._indexFile(filePath);
+          if (artFiles.indexOf(filePath) % 20 === 19) {
+            await new Promise((r) => setImmediate(r));
+          }
+        }
+        this._rebuildMerged();
+        this.logger.log(
+          `[WorkspaceIndexer] Indexed ${this.functions.size} functions, ${this.variables.size} variables across ${this.fileIndex.size} files`
+        );
+      }
+      /**
+       * Re-index a single file (called when the file is saved or changed).
+       * Accepts either a file:// URI or a plain filesystem path.
+       */
+      indexFile(uriOrPath) {
+        const filePath = uriOrPath.startsWith("file://") ? decodeURIComponent(uriOrPath.replace(/^file:\/\//, "").replace(/^\/([A-Z]:)/, "$1")) : uriOrPath;
+        if (!filePath.endsWith(".art"))
+          return;
+        this._indexFile(filePath);
+        this._rebuildMerged();
+        this.logger.log(`[WorkspaceIndexer] Re-indexed ${path.basename(filePath)}`);
+      }
+      /**
+       * Remove a file from the index (called when a file is deleted).
+       */
+      removeFile(uriOrPath) {
+        const filePath = uriOrPath.startsWith("file://") ? decodeURIComponent(uriOrPath.replace(/^file:\/\//, "").replace(/^\/([A-Z]:)/, "$1")) : uriOrPath;
+        if (this.fileIndex.has(filePath)) {
+          this.fileIndex.delete(filePath);
+          this._rebuildMerged();
+          this.logger.log(`[WorkspaceIndexer] Removed ${path.basename(filePath)} from index`);
+        }
+      }
+      /**
+       * Get the signature object for a user-defined function, suitable for
+       * use in hover and signature help.
+       * Returns null if not found.
+       */
+      getFunctionInfo(name) {
+        const info = this.functions.get(name);
+        if (!info)
+          return null;
+        const paramStr = info.params.map((p) => p).join(" ");
+        const signature = `${name}${paramStr ? " " + paramStr : ""} -> :any`;
+        return {
+          signature,
+          description: info.docComment || `User-defined function in ${path.basename(info.filePath)}`,
+          params: info.params.map((p) => ({ name: p, type: ":any" })),
+          returns: ":any",
+          isUserDefined: true,
+          filePath: info.filePath,
+          line: info.line
+        };
+      }
+      /**
+       * Check whether a name is a known user-defined function.
+       */
+      hasFunction(name) {
+        return this.functions.has(name);
+      }
+      /**
+       * Check whether a name is a known user-defined variable.
+       */
+      hasVariable(name) {
+        return this.variables.has(name);
+      }
+      /**
+       * Get all user-defined function names (for completion).
+       */
+      getAllFunctionNames() {
+        return Array.from(this.functions.keys());
+      }
+      /**
+       * Get all user-defined variable names (for completion).
+       */
+      getAllVariableNames() {
+        return Array.from(this.variables.keys());
+      }
+      /**
+       * Get location info for go-to-definition.
+       * Returns { filePath, line, column } or null.
+       */
+      getDefinitionLocation(name) {
+        const fn = this.functions.get(name);
+        if (fn)
+          return { filePath: fn.filePath, line: fn.line, column: fn.column };
+        const vr = this.variables.get(name);
+        if (vr)
+          return { filePath: vr.filePath, line: vr.line, column: vr.column };
+        return null;
+      }
+      // ── Private helpers ───────────────────────────────────────────────────────
+      _indexFile(filePath) {
+        const symbols = parseArtFile(filePath);
+        this.fileIndex.set(filePath, symbols);
+      }
+      /**
+       * Rebuild the merged function/variable maps from all file indexes.
+       * Later files win on name collision (alphabetical by path for determinism).
+       */
+      _rebuildMerged() {
+        this.functions = /* @__PURE__ */ new Map();
+        this.variables = /* @__PURE__ */ new Map();
+        const sortedPaths = Array.from(this.fileIndex.keys()).sort();
+        for (const filePath of sortedPaths) {
+          const { functions, variables } = this.fileIndex.get(filePath);
+          functions.forEach((info, name) => this.functions.set(name, info));
+          variables.forEach((info, name) => this.variables.set(name, info));
+        }
+      }
+      /**
+       * Recursively collect all .art files under a directory.
+       * Skips node_modules, .git, .cache, and hidden directories.
+       */
+      _collectArtFiles(dir, result) {
+        let entries;
+        try {
+          entries = fs.readdirSync(dir, { withFileTypes: true });
+        } catch {
+          return;
+        }
+        for (const entry of entries) {
+          if (entry.name.startsWith(".") || entry.name === "node_modules" || entry.name === ".cache")
+            continue;
+          const full = path.join(dir, entry.name);
+          if (entry.isDirectory()) {
+            this._collectArtFiles(full, result);
+          } else if (entry.isFile() && entry.name.endsWith(".art")) {
+            result.push(full);
+          }
+        }
+      }
+    };
+    module2.exports = WorkspaceIndexer;
+  }
+});
+
 // lib/signature-indexer.js
 var require_signature_indexer = __commonJS({
   "lib/signature-indexer.js"(exports2, module2) {
@@ -9425,6 +9745,7 @@ var require_signature_indexer = __commonJS({
     var path = require("path");
     var https = require("https");
     var { parseLibraryFromGitHub } = require_nim_parser();
+    var WorkspaceIndexer = require_workspace_indexer();
     var SignatureIndexer2 = class {
       constructor(logger) {
         this.logger = logger || console;
@@ -9435,10 +9756,8 @@ var require_signature_indexer = __commonJS({
         this.isInitialized = false;
         this.lastUpdate = null;
         this.updateInProgress = false;
-        this.docSources = [
-          "https://arturo-lang.io/documentation/library/"
-          // Main library reference page
-        ];
+        this.fileSHAs = /* @__PURE__ */ new Map();
+        this.workspaceIndexer = new WorkspaceIndexer(logger);
       }
       /**
        * Initialize the indexer with stale-while-revalidate pattern
@@ -9451,7 +9770,7 @@ var require_signature_indexer = __commonJS({
         await this.loadCache();
         this.scheduleBackgroundUpdate();
         this.isInitialized = true;
-        this.logger.log(`[SignatureIndexer] Initialized with ${this.signatures.size} signatures`);
+        this.logger.log(`[SignatureIndexer] Initialized with ${this.signatures.size} builtin signatures`);
       }
       /**
        * Load signatures from cache (or seed cache if no cache exists)
@@ -9462,6 +9781,9 @@ var require_signature_indexer = __commonJS({
             const cacheData = JSON.parse(fs.readFileSync(this.cacheFile, "utf8"));
             this.signatures = new Map(Object.entries(cacheData.signatures));
             this.lastUpdate = new Date(cacheData.lastUpdate);
+            if (cacheData.fileSHAs) {
+              this.fileSHAs = new Map(Object.entries(cacheData.fileSHAs));
+            }
             this.logger.log(`[SignatureIndexer] Loaded ${this.signatures.size} signatures from cache`);
             return;
           }
@@ -9525,12 +9847,17 @@ var require_signature_indexer = __commonJS({
         }
       }
       /**
-       * Fetch and parse all signatures from Arturo's GitHub source using the Nim parser.
+       * Fetch and parse signatures from Arturo's GitHub source.
+       * Uses delta mode: only re-fetches .nim files whose SHA has changed.
        */
       async fetchSignaturesFromDocs() {
-        return parseLibraryFromGitHub(
-          (msg) => this.logger.log(msg)
+        const result = await parseLibraryFromGitHub(
+          (msg) => this.logger.log(msg),
+          this.fileSHAs.size > 0 ? this.fileSHAs : null,
+          this.signatures
         );
+        this.fileSHAs = result.fileSHAs;
+        return result.signatures;
       }
       /**
        * Save signatures to cache file
@@ -9542,8 +9869,9 @@ var require_signature_indexer = __commonJS({
           }
           const cacheData = {
             signatures: Object.fromEntries(this.signatures),
+            fileSHAs: Object.fromEntries(this.fileSHAs),
             lastUpdate: (/* @__PURE__ */ new Date()).toISOString(),
-            version: "1.0"
+            version: "2.0"
           };
           fs.writeFileSync(this.cacheFile, JSON.stringify(cacheData, null, 2));
           this.logger.log(`[SignatureIndexer] Saved ${this.signatures.size} signatures to cache`);
@@ -9665,6 +9993,7 @@ var signatureIndexer = new SignatureIndexer(console);
 signatureIndexer.initialize().catch((err) => {
   console.error("[SignatureIndexer] Initialization error:", err);
 });
+var workspaceIndexer = signatureIndexer.workspaceIndexer;
 function getFunctionInfo(functionName) {
   const indexedSig = signatureIndexer.getSignature(functionName);
   if (indexedSig)
@@ -9760,14 +10089,45 @@ connection.onInitialize((params) => {
   }
   return result;
 });
-connection.onInitialized(() => {
+connection.onInitialized(async () => {
   if (hasConfigurationCapability) {
     connection.client.register(DidChangeConfigurationNotification.type, void 0);
   }
+  connection.client.register({
+    id: "artFileWatcher",
+    method: "workspace/didChangeWatchedFiles",
+    registerOptions: {
+      watchers: [{ globPattern: "**/*.art" }]
+    }
+  });
   if (hasWorkspaceFolderCapability) {
-    connection.workspace.onDidChangeWorkspaceFolders((_event) => {
+    connection.workspace.onDidChangeWorkspaceFolders(async (event) => {
       connection.console.log("Workspace folder change event received.");
+      for (const added of event.added) {
+        const folderPath = decodeURIComponent(
+          added.uri.replace(/^file:\/\//, "").replace(/^\/([A-Z]:)/, "$1")
+        );
+        await workspaceIndexer.indexWorkspace([folderPath]);
+      }
     });
+    const folders = await connection.workspace.getWorkspaceFolders();
+    if (folders && folders.length > 0) {
+      const rootPaths = folders.map(
+        (f) => decodeURIComponent(f.uri.replace(/^file:\/\//, "").replace(/^\/([A-Z]:)/, "$1"))
+      );
+      workspaceIndexer.indexWorkspace(rootPaths).catch(
+        (err) => connection.console.log(`[WorkspaceIndexer] Error: ${err.message}`)
+      );
+    }
+  }
+});
+connection.onNotification("workspace/didChangeWatchedFiles", (params) => {
+  for (const change of params.changes) {
+    if (change.type === 3) {
+      workspaceIndexer.removeFile(change.uri);
+    } else {
+      workspaceIndexer.indexFile(change.uri);
+    }
   }
 });
 connection.onDidChangeConfiguration(async (change) => {
@@ -11824,6 +12184,18 @@ connection.onDefinition((params) => {
       }
     };
   }
+  const wsLoc = workspaceIndexer.getDefinitionLocation(word);
+  if (wsLoc) {
+    const targetUri = "file:///" + wsLoc.filePath.replace(/\\/g, "/").replace(/^\//, "");
+    connection.console.log(`Definition: Found '${word}' in workspace at ${wsLoc.filePath}:${wsLoc.line}`);
+    return {
+      uri: targetUri,
+      range: {
+        start: { line: wsLoc.line, character: wsLoc.column },
+        end: { line: wsLoc.line, character: wsLoc.column + word.length }
+      }
+    };
+  }
   connection.console.log(`Definition: No definition found for '${word}'`);
   return null;
 });
@@ -11974,6 +12346,22 @@ ${indexedInfo.signature}
       }
     };
   }
+  const userFunc = workspaceIndexer.getFunctionInfo(word);
+  if (userFunc) {
+    const location = `*${userFunc.filePath.split(/[\\/]/).pop()}* line ${userFunc.line + 1}`;
+    return {
+      contents: {
+        kind: MarkupKind.Markdown,
+        value: `**${word}** (user function) \u2014 ${location}
+
+${userFunc.description}
+
+\`\`\`arturo
+${userFunc.signature}
+\`\`\``
+      }
+    };
+  }
   connection.console.log(`Hover: No info found for '${word}'`);
   return null;
 });
@@ -12074,19 +12462,41 @@ connection.onCompletion((params) => {
       documentation: typeInfo.description
     });
   });
+  workspaceIndexer.getAllFunctionNames().forEach((name) => {
+    const info = workspaceIndexer.getFunctionInfo(name);
+    items.push({
+      label: name,
+      kind: CompletionItemKind.Function,
+      detail: info.signature,
+      documentation: `${info.description}
+
+*${info.filePath.split(/[\\/]/).pop()}*`
+    });
+  });
+  workspaceIndexer.getAllVariableNames().forEach((name) => {
+    const vr = workspaceIndexer.variables.get(name);
+    items.push({
+      label: name,
+      kind: CompletionItemKind.Variable,
+      detail: vr ? vr.type : ":any",
+      documentation: `User-defined variable in *${vr ? vr.filePath.split(/[\\/]/).pop() : "?"}*`
+    });
+  });
   if (document) {
     const symbols = documentSymbols.get(params.textDocument.uri);
     if (symbols) {
       symbols.variables.forEach((info, name) => {
-        items.push({
-          label: name,
-          kind: CompletionItemKind.Variable,
-          detail: info.type,
-          documentation: "User-defined variable"
-        });
+        if (!workspaceIndexer.hasVariable(name)) {
+          items.push({
+            label: name,
+            kind: CompletionItemKind.Variable,
+            detail: info.type,
+            documentation: "User-defined variable"
+          });
+        }
       });
       symbols.functions.forEach((info, name) => {
-        if (!info.builtin) {
+        if (!info.builtin && !workspaceIndexer.hasFunction(name)) {
           items.push({
             label: name,
             kind: CompletionItemKind.Function,
@@ -12123,7 +12533,7 @@ connection.onSignatureHelp((params) => {
   const fullFuncName = funcMatch[1];
   const paramsText = funcMatch[2] || "";
   const baseFuncName = fullFuncName.split(".")[0];
-  const funcInfo = getFunctionInfo(baseFuncName);
+  const funcInfo = getFunctionInfo(baseFuncName) || workspaceIndexer.getFunctionInfo(baseFuncName);
   if (!funcInfo || !funcInfo.params)
     return null;
   const args = paramsText.trim().split(/\s+/).filter((s) => s.length > 0);

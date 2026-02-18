@@ -377,31 +377,106 @@ function parseNimFile(source, moduleName) {
     return result;
 }
 
+// ─── Delta support ────────────────────────────────────────────────────────────
+
+/**
+ * Fetch the current file-level SHAs for all .nim files in the library
+ * directory via the GitHub Trees API (recursive=1 gives all files in one
+ * request — much cheaper than one Contents API call per file).
+ *
+ * Returns a Map<filename, sha>  e.g.  { 'Arithmetic.nim' => 'a3f...', ... }
+ */
+async function getLibraryFileSHAs() {
+    const url = `${GITHUB_API_ROOT}/repos/${REPO}/git/trees/${BRANCH}?recursive=1`;
+    const json = await fetchUrl(url, { 'Accept': 'application/vnd.github.v3+json' });
+    const data = JSON.parse(json);
+
+    const shas = new Map();
+    const prefix = LIBRARY_PATH + '/';
+
+    for (const item of data.tree) {
+        if (item.type === 'blob' &&
+            item.path.startsWith(prefix) &&
+            item.path.endsWith('.nim') &&
+            !item.path.slice(prefix.length).includes('/')) {   // top-level only
+            const filename = item.path.slice(prefix.length);
+            shas.set(filename, item.sha);
+        }
+    }
+
+    return shas;
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
- * Fetch all Arturo library .nim files from GitHub and parse them.
+ * Fetch Arturo library .nim files from GitHub and parse them.
  *
- * Returns a Map<string, object> suitable for dropping straight into
- * SignatureIndexer.signatures.
+ * Supports delta mode: if `knownSHAs` is provided (a Map<filename, sha> from
+ * a previous fetch stored in the cache), only files whose SHA has changed are
+ * re-fetched.  Files that haven't changed reuse the signatures already present
+ * in `existingSignatures`.
  *
- * Each value has the shape expected by the LSP handlers:
- *   { signature, description, params, attrs, returns, module }
+ * Returns:
+ *   {
+ *     signatures: Map<name, sigObject>,  // full merged set
+ *     fileSHAs:   Map<filename, sha>,    // current SHAs — store in cache
+ *   }
  *
- * @param {Function} [logger]  Optional logging function (defaults to console.log)
- * @param {Function} [onProgress]  Optional callback(done, total, filename)
+ * @param {Function}         [logger]
+ * @param {Map<string,string>} [knownSHAs]          Previous SHA map or null for full fetch
+ * @param {Map<string,object>} [existingSignatures] Signatures from cache (used for unchanged files)
+ * @param {Function}         [onProgress]
  */
-async function parseLibraryFromGitHub(logger, onProgress) {
+async function parseLibraryFromGitHub(logger, knownSHAs, existingSignatures, onProgress) {
     const log = logger || console.log;
 
-    log('[NimParser] Fetching library file list from GitHub...');
-    const files = await getLibraryFileList();
-    log(`[NimParser] Found ${files.length} library files`);
+    // ── Get current file SHAs (one API call) ─────────────────────────────────
+    log('[NimParser] Fetching library file SHAs from GitHub...');
+    let currentSHAs;
+    try {
+        currentSHAs = await getLibraryFileSHAs();
+        log(`[NimParser] Got SHAs for ${currentSHAs.size} library files`);
+    } catch (err) {
+        // Trees API failed — fall back to Contents API listing (no delta)
+        log(`[NimParser] Trees API failed (${err.message}), falling back to full fetch`);
+        currentSHAs = null;
+    }
 
-    const signatures = new Map();
+    // ── Determine which files need fetching ───────────────────────────────────
+    let filesToFetch;
+    if (!currentSHAs) {
+        // Trees API failed — fetch everything
+        filesToFetch = await getLibraryFileList();
+        filesToFetch = filesToFetch.map(f => ({ ...f, changed: true }));
+    } else {
+        // Build list from SHA map; mark changed files
+        filesToFetch = [];
+        for (const [filename, sha] of currentSHAs) {
+            const changed = !knownSHAs || knownSHAs.get(filename) !== sha;
+            filesToFetch.push({
+                name:    filename,
+                url:     `${GITHUB_RAW_ROOT}/${REPO}/${BRANCH}/${LIBRARY_PATH}/${filename}`,
+                sha,
+                changed,
+            });
+        }
+        const changedCount = filesToFetch.filter(f => f.changed).length;
+        log(`[NimParser] ${changedCount} of ${filesToFetch.length} files changed since last fetch`);
+    }
+
+    // ── Start with existing signatures, overwrite changed files ──────────────
+    const signatures = new Map(existingSignatures || []);
     let done = 0;
+    let fetched = 0;
 
-    for (const file of files) {
+    for (const file of filesToFetch) {
+        if (!file.changed) {
+            done++;
+            if (onProgress) onProgress(done, filesToFetch.length, file.name);
+            continue;
+        }
+
         const moduleName = file.name.replace(/\.nim$/, '');
         try {
             const source = await fetchUrl(file.url);
@@ -418,9 +493,10 @@ async function parseLibraryFromGitHub(logger, onProgress) {
                 });
             });
 
+            fetched++;
             done++;
             log(`[NimParser] Parsed ${file.name}: ${funcs.length} functions (total: ${signatures.size})`);
-            if (onProgress) onProgress(done, files.length, file.name);
+            if (onProgress) onProgress(done, filesToFetch.length, file.name);
 
         } catch (err) {
             log(`[NimParser] Warning: failed to parse ${file.name}: ${err.message}`);
@@ -428,8 +504,8 @@ async function parseLibraryFromGitHub(logger, onProgress) {
         }
     }
 
-    log(`[NimParser] Complete. ${signatures.size} functions extracted from ${done} files.`);
-    return signatures;
+    log(`[NimParser] Complete. Fetched ${fetched} changed files. ${signatures.size} total functions.`);
+    return { signatures, fileSHAs: currentSHAs || new Map() };
 }
 
 /**

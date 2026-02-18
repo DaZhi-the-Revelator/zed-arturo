@@ -78,17 +78,20 @@ node server.js --stdio
 The LSP now features a sophisticated signature indexing system:
 
 **Components**:
+
 - `lib/signature-indexer.js`: Core indexing module with stale-while-revalidate pattern
 - `seed-cache.json`: Pre-packaged cache with 80 most popular functions
 - `.cache/signatures.json`: User cache updated every 24 hours
 
 **Workflow**:
+
 1. **Boot Phase**: LSP loads seed cache immediately (< 10ms)
 2. **Background Check**: After startup, checks for updated documentation
 3. **Delta Update**: If newer signatures found, updates cache for next session
 4. **Seamless UX**: Users never notice when signatures refresh
 
 **Benefits**:
+
 - **Coverage**: 521+ functions vs 80 manually-defined
 - **Performance**: Instant startup, non-blocking updates
 - **Reliability**: Works offline, graceful degradation

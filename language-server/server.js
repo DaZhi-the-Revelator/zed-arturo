@@ -97,6 +97,9 @@ signatureIndexer.initialize().catch(err => {
     console.error('[SignatureIndexer] Initialization error:', err);
 });
 
+// Convenience alias — the workspace indexer lives inside SignatureIndexer
+const workspaceIndexer = signatureIndexer.workspaceIndexer;
+
 /**
  * Helper: Get function info from indexer first, then fall back to BUILTIN_FUNCTIONS.
  * This ensures the 80 seed functions always work even if the indexer fails.
@@ -217,14 +220,54 @@ connection.onInitialize((params) => {
     return result;
 });
 
-connection.onInitialized(() => {
+connection.onInitialized(async () => {
     if (hasConfigurationCapability) {
         connection.client.register(DidChangeConfigurationNotification.type, undefined);
     }
+
+    // Register for file change notifications on .art files
+    connection.client.register({
+        id: 'artFileWatcher',
+        method: 'workspace/didChangeWatchedFiles',
+        registerOptions: {
+            watchers: [{ globPattern: '**/*.art' }]
+        }
+    });
+
+    // Scan workspace folders for user-defined functions
     if (hasWorkspaceFolderCapability) {
-        connection.workspace.onDidChangeWorkspaceFolders(_event => {
+        connection.workspace.onDidChangeWorkspaceFolders(async event => {
             connection.console.log('Workspace folder change event received.');
+            // Re-index added folders
+            for (const added of event.added) {
+                const folderPath = decodeURIComponent(
+                    added.uri.replace(/^file:\/\//, '').replace(/^\/([A-Z]:)/, '$1')
+                );
+                await workspaceIndexer.indexWorkspace([folderPath]);
+            }
         });
+
+        const folders = await connection.workspace.getWorkspaceFolders();
+        if (folders && folders.length > 0) {
+            const rootPaths = folders.map(f =>
+                decodeURIComponent(f.uri.replace(/^file:\/\//, '').replace(/^\/([A-Z]:)/, '$1'))
+            );
+            // Non-blocking: index workspace in background
+            workspaceIndexer.indexWorkspace(rootPaths).catch(err =>
+                connection.console.log(`[WorkspaceIndexer] Error: ${err.message}`)
+            );
+        }
+    }
+});
+
+// Re-index .art files when they are saved or created/deleted
+connection.onNotification('workspace/didChangeWatchedFiles', (params) => {
+    for (const change of params.changes) {
+        if (change.type === 3) {   // FileChangeType.Deleted = 3
+            workspaceIndexer.removeFile(change.uri);
+        } else {                   // Created = 1, Changed = 2
+            workspaceIndexer.indexFile(change.uri);
+        }
     }
 });
 
@@ -1794,6 +1837,20 @@ connection.onDefinition((params) => {
         };
     }
 
+    // Cross-file definition via workspace indexer
+    const wsLoc = workspaceIndexer.getDefinitionLocation(word);
+    if (wsLoc) {
+        const targetUri = 'file:///' + wsLoc.filePath.replace(/\\/g, '/').replace(/^\//, '');
+        connection.console.log(`Definition: Found '${word}' in workspace at ${wsLoc.filePath}:${wsLoc.line}`);
+        return {
+            uri: targetUri,
+            range: {
+                start: { line: wsLoc.line, character: wsLoc.column },
+                end:   { line: wsLoc.line, character: wsLoc.column + word.length }
+            }
+        };
+    }
+
     connection.console.log(`Definition: No definition found for '${word}'`);
     return null;
 });
@@ -1958,6 +2015,18 @@ connection.onHover((params) => {
         };
     }
 
+    // Check workspace indexer for user-defined functions across all project files
+    const userFunc = workspaceIndexer.getFunctionInfo(word);
+    if (userFunc) {
+        const location = `*${userFunc.filePath.split(/[\\/]/).pop()}* line ${userFunc.line + 1}`;
+        return {
+            contents: {
+                kind: MarkupKind.Markdown,
+                value: `**${word}** (user function) — ${location}\n\n${userFunc.description}\n\n\`\`\`arturo\n${userFunc.signature}\n\`\`\``
+            }
+        };
+    }
+
     connection.console.log(`Hover: No info found for '${word}'`);
     return null;
 });
@@ -2080,21 +2149,43 @@ connection.onCompletion((params) => {
         });
     });
 
-    // Add user-defined symbols
+    // Add user-defined symbols — workspace-wide first, then current document
+    // (workspace covers cross-file; current doc covers symbols not yet saved)
+    workspaceIndexer.getAllFunctionNames().forEach(name => {
+        const info = workspaceIndexer.getFunctionInfo(name);
+        items.push({
+            label: name,
+            kind: CompletionItemKind.Function,
+            detail: info.signature,
+            documentation: `${info.description}\n\n*${info.filePath.split(/[\\/]/).pop()}*`
+        });
+    });
+    workspaceIndexer.getAllVariableNames().forEach(name => {
+        const vr = workspaceIndexer.variables.get(name);
+        items.push({
+            label: name,
+            kind: CompletionItemKind.Variable,
+            detail: vr ? vr.type : ':any',
+            documentation: `User-defined variable in *${vr ? vr.filePath.split(/[\\/]/).pop() : '?'}*`
+        });
+    });
+
     if (document) {
         const symbols = documentSymbols.get(params.textDocument.uri);
         if (symbols) {
             symbols.variables.forEach((info, name) => {
-                items.push({
-                    label: name,
-                    kind: CompletionItemKind.Variable,
-                    detail: info.type,
-                    documentation: 'User-defined variable'
-                });
+                if (!workspaceIndexer.hasVariable(name)) {
+                    items.push({
+                        label: name,
+                        kind: CompletionItemKind.Variable,
+                        detail: info.type,
+                        documentation: 'User-defined variable'
+                    });
+                }
             });
 
             symbols.functions.forEach((info, name) => {
-                if (!info.builtin) {
+                if (!info.builtin && !workspaceIndexer.hasFunction(name)) {
                     items.push({
                         label: name,
                         kind: CompletionItemKind.Function,
@@ -2144,8 +2235,8 @@ connection.onSignatureHelp((params) => {
     // Extract base function name (ignore attributes like .with, .else)
     const baseFuncName = fullFuncName.split('.')[0];
 
-    // Look up function info
-    const funcInfo = getFunctionInfo(baseFuncName);
+    // Look up function info — builtins first, then user-defined
+    const funcInfo = getFunctionInfo(baseFuncName) || workspaceIndexer.getFunctionInfo(baseFuncName);
     if (!funcInfo || !funcInfo.params) return null;
 
     // Count how many parameters have been typed

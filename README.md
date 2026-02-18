@@ -8,7 +8,7 @@ A comprehensive language extension for [Arturo](https://arturo-lang.io/) in [Zed
 
 ## Version
 
-**Current Version**: 2.0-dev
+**Current Version**: 2.0
 
 ## Features
 
@@ -43,11 +43,15 @@ Please note Zed keymaps may have changed - use the Command Palette, Keymap and K
   - Physical units (`` `m``, `` `kg``, `` `s``, etc.)
   - Named colors (`#red`, `#blue`, `#cyan`, etc.)
 
-- **Signature Help**: Real-time parameter hints as you type function calls with active parameter tracking
-  - **Dynamic Signature Generation (v2.0+)**: Automatically indexes all 521+ built-in Arturo functions
-  - **Stale-While-Revalidate Caching**: Instant startup with background updates every 24 hours
-  - **Offline-First**: Works seamlessly without internet connection using seed cache
-  - **Expandable Coverage**: From 80 manually-defined functions to 521+ auto-indexed functions
+- **Signature Help**: Real-time parameter hints as you type function calls with active parameter tracking, powered by Dynamic Signature Generation (see below) — covers all 521+ built-in Arturo functions plus user-defined functions from your workspace
+
+- **Dynamic Signature Generation**: A self-updating signature index that replaces the old static list of 80 manually-defined functions
+  - **Signature Indexer (`lib/signature-indexer.js`)**: Core `SignatureIndexer` class with full cache lifecycle management
+  - **Stale-While-Revalidate Pattern**: Cache is loaded instantly on startup; background task refreshes it every 24 hours without blocking the editor
+  - **Offline-First Design**: Ships with a seed cache of the 80 most popular functions so the extension works perfectly without internet from day one
+  - **User Function Indexing**: Automatically scans and indexes all user-defined functions across workspace files — their signatures appear in Signature Help, Hover, and Completion alongside the 521+ built-ins, with parameter types extracted from annotations
+  - **Delta Updates**: Uses SHA hashes from Arturo's `.nim` source files on GitHub to detect which library files have changed, fetching only the updated signatures rather than doing a full refresh each cycle
+  - **Graceful Degradation**: Falls back to the last known good cache if any network fetch fails; falls back to full refresh if delta data is unavailable
 
 - **Find All References**: Scope-aware reference finding that:
   - Excludes false positives (comments, strings, literals)
@@ -379,19 +383,18 @@ Contributions are welcome! Please feel free to submit pull requests or open issu
 
 ## Changelog
 
-### v2.0-dev (In Development)
+### v2.0
 
-- 🚀 **NEW: Dynamic Signature Generation** - Revolutionary signature indexing system
-  - **Coverage Expansion**: From 80 manually-defined to 521+ auto-indexed Arturo functions
-  - **Stale-While-Revalidate Pattern**: Instant startup with background updates every 24 hours
-  - **Offline-First Design**: Works seamlessly without internet using seed cache
-  - **Automatic Updates**: Fetches latest signatures from Arturo documentation
+- 🚀 **NEW: Dynamic Signature Generation** - A self-updating signature index replacing the old static list of 80 manually-defined functions
+  - **Coverage**: Expanded from 80 manually-defined functions to 521+ auto-indexed Arturo built-ins
+  - **Architecture**: Dedicated `SignatureIndexer` class (`lib/signature-indexer.js`) with full cache lifecycle management
+  - **Stale-While-Revalidate Pattern**: Cache loads instantly on startup; background task refreshes every 24 hours without blocking the editor
+  - **Offline-First Design**: Ships with a seed cache of the 80 most popular functions — works perfectly without internet from day one
+  - **User Function Indexing**: Automatically scans and indexes all user-defined functions across workspace files; their signatures appear in Signature Help, Hover, and Completion alongside built-ins, with parameter types extracted from annotations
+  - **Delta Updates**: Uses SHA hashes from Arturo’s `.nim` source files on GitHub to detect which library files have changed, fetching only updated signatures rather than doing a full refresh each cycle
+  - **Graceful Degradation**: Falls back to the last known good cache on network failure; falls back to full refresh if delta data is unavailable
   - **Zero Configuration**: Works out of the box with no setup required
-  - **Intelligent Caching**: JSON-based cache with timestamp tracking
-  - **Seed Cache**: Ships with 80 most popular functions for immediate first-run experience
-  - **Expandable**: Can index user-defined functions and custom documentation sources
-  - **Performance**: Non-blocking initialization, minimal memory footprint
-  - **Architecture**: Dedicated `SignatureIndexer` module with comprehensive API
+  - **Non-Blocking**: Initialization is fully asynchronous with minimal memory footprint
 
 - 🔧 **ENHANCEMENT: Feature Toggles** - Added ability to enable/disable LSP features via settings
   - Completions, signatures, formatting, and highlights can be toggled on/off

@@ -12,6 +12,7 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 const { parseLibraryFromGitHub } = require('./nim-parser');
+const WorkspaceIndexer = require('./workspace-indexer');
 
 class SignatureIndexer {
     constructor(logger) {
@@ -23,16 +24,10 @@ class SignatureIndexer {
         this.isInitialized = false;
         this.lastUpdate = null;
         this.updateInProgress = false;
-        
-        // Arturo documentation sources
-        // Note: Arturo's documentation is generated from source code, not markdown
-        // We use the online documentation website which has all 521+ functions
-        this.docSources = [
-            'https://arturo-lang.io/documentation/library/',  // Main library reference page
-        ];
-        
-        // Phase 2: Uses the Nim source parser to fetch all 521+ functions from GitHub.
-        // Falls back to seed cache when offline.
+        /** Map<filename, sha> stored in cache to enable delta updates */
+        this.fileSHAs = new Map();
+        /** Workspace indexer for user-defined functions */
+        this.workspaceIndexer = new WorkspaceIndexer(logger);
     }
 
     /**
@@ -52,7 +47,7 @@ class SignatureIndexer {
         this.scheduleBackgroundUpdate();
 
         this.isInitialized = true;
-        this.logger.log(`[SignatureIndexer] Initialized with ${this.signatures.size} signatures`);
+        this.logger.log(`[SignatureIndexer] Initialized with ${this.signatures.size} builtin signatures`);
     }
 
     /**
@@ -65,6 +60,10 @@ class SignatureIndexer {
                 const cacheData = JSON.parse(fs.readFileSync(this.cacheFile, 'utf8'));
                 this.signatures = new Map(Object.entries(cacheData.signatures));
                 this.lastUpdate = new Date(cacheData.lastUpdate);
+                // Restore file SHAs for delta updates
+                if (cacheData.fileSHAs) {
+                    this.fileSHAs = new Map(Object.entries(cacheData.fileSHAs));
+                }
                 this.logger.log(`[SignatureIndexer] Loaded ${this.signatures.size} signatures from cache`);
                 return;
             }
@@ -150,12 +149,18 @@ class SignatureIndexer {
     }
 
     /**
-     * Fetch and parse all signatures from Arturo's GitHub source using the Nim parser.
+     * Fetch and parse signatures from Arturo's GitHub source.
+     * Uses delta mode: only re-fetches .nim files whose SHA has changed.
      */
     async fetchSignaturesFromDocs() {
-        return parseLibraryFromGitHub(
-            msg => this.logger.log(msg)
+        const result = await parseLibraryFromGitHub(
+            msg  => this.logger.log(msg),
+            this.fileSHAs.size > 0 ? this.fileSHAs : null,
+            this.signatures
         );
+        // Store the updated SHAs for the next delta run
+        this.fileSHAs = result.fileSHAs;
+        return result.signatures;
     }
 
     /**
@@ -171,8 +176,9 @@ class SignatureIndexer {
             // Convert Map to object for JSON serialization
             const cacheData = {
                 signatures: Object.fromEntries(this.signatures),
+                fileSHAs:   Object.fromEntries(this.fileSHAs),
                 lastUpdate: new Date().toISOString(),
-                version: '1.0'
+                version: '2.0'
             };
 
             fs.writeFileSync(this.cacheFile, JSON.stringify(cacheData, null, 2));
