@@ -11,6 +11,7 @@
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
+const { parseLibraryFromGitHub } = require('./nim-parser');
 
 class SignatureIndexer {
     constructor(logger) {
@@ -30,9 +31,8 @@ class SignatureIndexer {
             'https://arturo-lang.io/documentation/library/',  // Main library reference page
         ];
         
-        // Note: For now, the signature indexer uses the seed cache (80 functions)
-        // Phase 2 will implement web scraping of arturo-lang.io or parsing Arturo source files
-        // The infrastructure is ready, just needs the parser updated
+        // Phase 2: Uses the Nim source parser to fetch all 521+ functions from GitHub.
+        // Falls back to seed cache when offline.
     }
 
     /**
@@ -97,6 +97,8 @@ class SignatureIndexer {
         }
 
         // Check if we need to update (every 24 hours)
+        // If lastUpdate is null it means we're running from the seed cache
+        // (no full fetch has ever succeeded) — always fetch in that case.
         const now = new Date();
         if (this.lastUpdate) {
             const hoursSinceUpdate = (now - this.lastUpdate) / (1000 * 60 * 60);
@@ -104,6 +106,8 @@ class SignatureIndexer {
                 this.logger.log('[SignatureIndexer] Cache is fresh, skipping update');
                 return;
             }
+        } else {
+            this.logger.log('[SignatureIndexer] No prior full fetch — will fetch now');
         }
 
         // Start background update
@@ -146,151 +150,12 @@ class SignatureIndexer {
     }
 
     /**
-     * Fetch signatures from Arturo documentation
+     * Fetch and parse all signatures from Arturo's GitHub source using the Nim parser.
      */
     async fetchSignaturesFromDocs() {
-        const signatures = new Map();
-
-        try {
-            // Fetch the main library documentation
-            const libraryMd = await this.fetchUrl(this.docSources[0]);
-            
-            // Parse markdown documentation to extract function signatures
-            const parsed = this.parseLibraryMarkdown(libraryMd);
-            parsed.forEach((sig, name) => signatures.set(name, sig));
-
-            this.logger.log(`[SignatureIndexer] Parsed ${signatures.size} signatures from documentation`);
-        } catch (err) {
-            this.logger.log(`[SignatureIndexer] Failed to fetch from docs: ${err.message}`);
-        }
-
-        return signatures;
-    }
-
-    /**
-     * Fetch URL content via HTTPS
-     */
-    fetchUrl(url) {
-        return new Promise((resolve, reject) => {
-            https.get(url, { timeout: 10000 }, (res) => {
-                if (res.statusCode !== 200) {
-                    reject(new Error(`HTTP ${res.statusCode}`));
-                    return;
-                }
-
-                let data = '';
-                res.on('data', chunk => data += chunk);
-                res.on('end', () => resolve(data));
-            }).on('error', reject).on('timeout', () => {
-                reject(new Error('Request timeout'));
-            });
-        });
-    }
-
-    /**
-     * Parse Arturo library markdown to extract function signatures
-     * 
-     * Format in library.md:
-     * ## functionName
-     * **Signature**: `functionName param1 :type1 param2 :type2 -> :returnType`
-     * **Description**: Description text
-     */
-    parseLibraryMarkdown(markdown) {
-        const signatures = new Map();
-        const lines = markdown.split('\n');
-        
-        let currentFunc = null;
-        let currentSig = null;
-        let currentDesc = null;
-
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i].trim();
-
-            // Function name: ## functionName
-            if (line.startsWith('## ') && !line.startsWith('## ')) {
-                if (currentFunc && currentSig) {
-                    signatures.set(currentFunc, {
-                        signature: currentSig,
-                        description: currentDesc || '',
-                        params: this.parseParams(currentSig),
-                        returns: this.parseReturnType(currentSig)
-                    });
-                }
-
-                currentFunc = line.substring(3).trim();
-                currentSig = null;
-                currentDesc = null;
-            }
-            // Signature: **Signature**: `...`
-            else if (line.includes('**Signature**:')) {
-                const match = line.match(/`([^`]+)`/);
-                if (match) {
-                    currentSig = match[1];
-                }
-            }
-            // Description: **Description**: ...
-            else if (line.includes('**Description**:')) {
-                currentDesc = line.split('**Description**:')[1].trim();
-            }
-        }
-
-        // Add last function
-        if (currentFunc && currentSig) {
-            signatures.set(currentFunc, {
-                signature: currentSig,
-                description: currentDesc || '',
-                params: this.parseParams(currentSig),
-                returns: this.parseReturnType(currentSig)
-            });
-        }
-
-        return signatures;
-    }
-
-    /**
-     * Parse parameters from a signature string
-     * Example: "print value :any -> :null" => [{ name: 'value', type: ':any' }]
-     */
-    parseParams(signature) {
-        const params = [];
-        
-        // Split signature at "->" to get the parameter part
-        const parts = signature.split('->');
-        if (parts.length === 0) return params;
-
-        const paramPart = parts[0].trim();
-        
-        // Extract function name and parameters
-        const tokens = paramPart.split(/\s+/);
-        if (tokens.length < 2) return params;
-
-        // Skip function name (first token)
-        for (let i = 1; i < tokens.length; i++) {
-            const token = tokens[i];
-            
-            // If token starts with ':', it's a type annotation for previous param
-            if (token.startsWith(':')) {
-                if (params.length > 0) {
-                    params[params.length - 1].type = token;
-                }
-            }
-            // Otherwise it's a parameter name
-            else {
-                params.push({ name: token, type: ':any' });
-            }
-        }
-
-        return params;
-    }
-
-    /**
-     * Parse return type from signature string
-     * Example: "print value :any -> :null" => ":null"
-     */
-    parseReturnType(signature) {
-        const parts = signature.split('->');
-        if (parts.length < 2) return ':any';
-        return parts[1].trim();
+        return parseLibraryFromGitHub(
+            msg => this.logger.log(msg)
+        );
     }
 
     /**
@@ -336,6 +201,23 @@ class SignatureIndexer {
      */
     hasFunction(functionName) {
         return this.signatures.has(functionName);
+    }
+
+    /**
+     * Get all known attribute names derived from loaded signatures.
+     * Walks every signature's attrs array and collects the names.
+     * Returns a Set<string> so callers can do O(1) lookups.
+     */
+    getAllAttrNames() {
+        const attrs = new Set();
+        for (const sig of this.signatures.values()) {
+            if (Array.isArray(sig.attrs)) {
+                for (const attr of sig.attrs) {
+                    if (attr.name) attrs.add(attr.name);
+                }
+            }
+        }
+        return attrs;
     }
 
     /**

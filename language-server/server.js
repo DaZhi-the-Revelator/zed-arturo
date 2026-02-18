@@ -108,6 +108,16 @@ function getFunctionInfo(functionName) {
 }
 
 /**
+ * Helper: Check if a word is a known attribute name.
+ * Checks the static ATTRIBUTE_NAMES set first (instant), then the live
+ * indexer attrs derived from fetched signatures (covers md5, sha256, etc.).
+ */
+function isKnownAttribute(word) {
+    if (ATTRIBUTE_NAMES.has(word)) return true;
+    return signatureIndexer.getAllAttrNames().has(word);
+}
+
+/**
  * Initialize the language server
  */
 connection.onInitialize((params) => {
@@ -500,6 +510,12 @@ const ATTRIBUTE_NAMES = new Set([
     
     // Data format attributes
     "json", "yaml", "xml", "html", "csv", "tsv", "sql", "markdown", "text",
+
+    // Hash/digest algorithm attributes
+    "md5", "sha1", "sha256", "sha384", "sha512", "sha3", "blake2", "crc32",
+
+    // Encoding format attributes
+    "base64", "base58", "hex", "url", "utf8", "ascii", "binary",
     
     // HTTP method attributes
     "get", "post", "put", "delete", "patch", "head", "options", "trace",
@@ -1630,8 +1646,8 @@ async function validateTextDocument(document) {
             
             // Check if word is preceded by a dot (attribute)
             if (wordIndex > 0 && line[wordIndex - 1] === '.') {
-                // This is an attribute - check if it's in our attribute list
-                if (ATTRIBUTE_NAMES.has(word)) {
+                // This is an attribute - check static list or live indexer attrs
+                if (isKnownAttribute(word)) {
                     return; // Valid attribute
                 }
                 // Otherwise continue to check if it's defined
@@ -1861,8 +1877,8 @@ connection.onHover((params) => {
     // Check if preceded by a dot (attribute)
     const charBeforeWord = beforeCursor[beforeCursor.length - wordBefore.length - 1];
     if (charBeforeWord === '.') {
-        // This is an attribute
-        if (ATTRIBUTE_NAMES.has(word)) {
+        // Check static list or live indexer attrs
+        if (isKnownAttribute(word)) {
             return {
                 contents: {
                     kind: MarkupKind.Markdown,
@@ -1928,6 +1944,18 @@ connection.onHover((params) => {
                 }
             };
         }
+    }
+
+    // Check the signature indexer directly (catches functions not in BUILTIN_NAMES
+    // but known to the indexer after a successful GitHub fetch)
+    const indexedInfo = signatureIndexer.getSignature(word);
+    if (indexedInfo) {
+        return {
+            contents: {
+                kind: MarkupKind.Markdown,
+                value: `**${word}** (builtin)\n\n${indexedInfo.description}\n\n\`\`\`arturo\n${indexedInfo.signature}\n\`\`\``
+            }
+        };
     }
 
     connection.console.log(`Hover: No info found for '${word}'`);

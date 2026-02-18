@@ -9129,12 +9129,302 @@ var init_main = __esm({
   }
 });
 
+// lib/nim-parser.js
+var require_nim_parser = __commonJS({
+  "lib/nim-parser.js"(exports2, module2) {
+    "use strict";
+    var https = require("https");
+    var GITHUB_API_ROOT = "https://api.github.com";
+    var GITHUB_RAW_ROOT = "https://raw.githubusercontent.com";
+    var REPO = "arturo-lang/arturo";
+    var BRANCH = "master";
+    var LIBRARY_PATH = "src/library";
+    var TYPE_MAP = {
+      "Integer": ":integer",
+      "Floating": ":floating",
+      "Complex": ":complex",
+      "Rational": ":rational",
+      "Version": ":version",
+      "Type": ":type",
+      "Char": ":char",
+      "String": ":string",
+      "Regex": ":regex",
+      "Literal": ":literal",
+      "PathLiteral": ":literal",
+      // path literals behave like literals to users
+      "Block": ":block",
+      "Inline": ":inline",
+      "Dictionary": ":dictionary",
+      "Function": ":function",
+      "Method": ":method",
+      "Object": ":object",
+      "Module": ":module",
+      "Path": ":path",
+      "PathLabel": ":path",
+      "Range": ":range",
+      "Date": ":date",
+      "Unit": ":unit",
+      "Quantity": ":quantity",
+      "Color": ":color",
+      "Binary": ":binary",
+      "Database": ":database",
+      "Socket": ":socket",
+      "Error": ":error",
+      "Logical": ":logical",
+      "Nothing": ":nothing",
+      "Null": ":null",
+      "Any": ":any",
+      // Arturo uses "Nothing" for void returns; map both
+      "nothing": ":nothing",
+      "null": ":null",
+      "any": ":any"
+    };
+    function fetchUrl(url, extraHeaders = {}) {
+      return new Promise((resolve, reject) => {
+        const headers = {
+          "User-Agent": "arturo-zed-extension/2.0",
+          ...extraHeaders
+        };
+        const req = https.get(url, { headers, timeout: 15e3 }, (res) => {
+          if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+            fetchUrl(res.headers.location, extraHeaders).then(resolve).catch(reject);
+            res.resume();
+            return;
+          }
+          if (res.statusCode !== 200) {
+            res.resume();
+            reject(new Error(`HTTP ${res.statusCode} for ${url}`));
+            return;
+          }
+          const chunks = [];
+          res.on("data", (chunk) => chunks.push(chunk));
+          res.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+          res.on("error", reject);
+        });
+        req.on("error", reject);
+        req.on("timeout", () => {
+          req.destroy();
+          reject(new Error(`Timeout fetching ${url}`));
+        });
+      });
+    }
+    async function getLibraryFileList() {
+      const url = `${GITHUB_API_ROOT}/repos/${REPO}/contents/${LIBRARY_PATH}?ref=${BRANCH}`;
+      const json = await fetchUrl(url, { "Accept": "application/vnd.github.v3+json" });
+      const entries = JSON.parse(json);
+      return entries.filter((e) => e.type === "file" && e.name.endsWith(".nim")).map((e) => ({
+        name: e.name,
+        url: `${GITHUB_RAW_ROOT}/${REPO}/${BRANCH}/${LIBRARY_PATH}/${e.name}`
+      }));
+    }
+    function parseTypeSet(raw) {
+      if (!raw || raw.trim() === "")
+        return ":any";
+      const seen = /* @__PURE__ */ new Set();
+      const types = [];
+      raw.split(",").forEach((t) => {
+        const name = t.trim();
+        const mapped = TYPE_MAP[name];
+        if (mapped && !seen.has(mapped)) {
+          seen.add(mapped);
+          types.push(mapped);
+        }
+      });
+      return types.length > 0 ? types.join("/") : ":any";
+    }
+    function buildSignature(name, params, returns) {
+      const paramStr = params.map((p) => `${p.name} ${p.type}`).join(" ");
+      return `${name}${paramStr ? " " + paramStr : ""} -> ${returns}`;
+    }
+    function parseNimFile(source, moduleName) {
+      const lines = source.split("\n");
+      const result = [];
+      let i = 0;
+      while (i < lines.length) {
+        const line = lines[i];
+        const builtinMatch = line.match(/^\s+builtin\s+"([^"]+)"\s*,\s*$/);
+        if (!builtinMatch) {
+          i++;
+          continue;
+        }
+        const funcName = builtinMatch[1];
+        i++;
+        let description = "";
+        let rawArgs = "";
+        let rawAttrs = "";
+        let rawReturns = "";
+        let inArgs = false;
+        let inAttrs = false;
+        let depth = 0;
+        const implPattern = /^\s+\w.*\s*:\s*$/;
+        let done = false;
+        while (i < lines.length && !done) {
+          const fl = lines[i];
+          if (inArgs || inAttrs) {
+            const open = (fl.match(/\{/g) || []).length;
+            const close = (fl.match(/\}/g) || []).length;
+            depth += open - close;
+            if (inArgs)
+              rawArgs += fl + "\n";
+            if (inAttrs)
+              rawAttrs += fl + "\n";
+            if (depth <= 0) {
+              inArgs = false;
+              inAttrs = false;
+              depth = 0;
+            }
+            i++;
+            continue;
+          }
+          const descMatch = fl.match(/^\s+description\s*=\s*"((?:[^"\\]|\\.)*)"/);
+          if (descMatch) {
+            description = descMatch[1].replace(/\\"/g, '"');
+            i++;
+            continue;
+          }
+          const argsNoArgs = fl.match(/^\s+args\s*=\s*NoArgs\s*,?\s*$/);
+          if (argsNoArgs) {
+            rawArgs = "NoArgs";
+            i++;
+            continue;
+          }
+          const argsStart = fl.match(/^\s+args\s*=\s*\{/);
+          if (argsStart) {
+            const open = (fl.match(/\{/g) || []).length;
+            const close = (fl.match(/\}/g) || []).length;
+            depth = open - close;
+            rawArgs = fl + "\n";
+            inArgs = depth > 0;
+            i++;
+            continue;
+          }
+          const attrsNoAttrs = fl.match(/^\s+attrs\s*=\s*NoAttrs\s*,?\s*$/);
+          if (attrsNoAttrs) {
+            rawAttrs = "NoAttrs";
+            i++;
+            continue;
+          }
+          const attrsStart = fl.match(/^\s+attrs\s*=\s*\{/);
+          if (attrsStart) {
+            const open = (fl.match(/\{/g) || []).length;
+            const close = (fl.match(/\}/g) || []).length;
+            depth = open - close;
+            rawAttrs = fl + "\n";
+            inAttrs = depth > 0;
+            i++;
+            continue;
+          }
+          const returnsMatch = fl.match(/^\s+returns\s*=\s*\{([^}]+)\}/);
+          if (returnsMatch) {
+            rawReturns = returnsMatch[1];
+            i++;
+            continue;
+          }
+          if (fl.match(/"""\s*:\s*$/) || fl.match(/^\s+#={5,}/)) {
+            done = true;
+            continue;
+          }
+          i++;
+        }
+        const params = [];
+        if (rawArgs && rawArgs !== "NoArgs") {
+          const paramPattern = /"([^"]+)"\s*:\s*\{([^}]+)\}/g;
+          let m;
+          while ((m = paramPattern.exec(rawArgs)) !== null) {
+            params.push({
+              name: m[1],
+              type: parseTypeSet(m[2])
+            });
+          }
+        }
+        const attrs = [];
+        if (rawAttrs && rawAttrs !== "NoAttrs") {
+          const attrPattern = /"([^"]+)"\s*:\s*\(\{([^}]*)\}\s*,\s*"([^"]*)"\)/g;
+          let m;
+          while ((m = attrPattern.exec(rawAttrs)) !== null) {
+            attrs.push({
+              name: m[1],
+              type: parseTypeSet(m[2]),
+              description: m[3]
+            });
+          }
+        }
+        const returns = rawReturns ? parseTypeSet(rawReturns) : ":any";
+        if (!description) {
+          continue;
+        }
+        result.push({
+          name: funcName,
+          description,
+          params,
+          attrs,
+          returns,
+          signature: buildSignature(funcName, params, returns),
+          module: moduleName
+        });
+      }
+      return result;
+    }
+    async function parseLibraryFromGitHub(logger, onProgress) {
+      const log = logger || console.log;
+      log("[NimParser] Fetching library file list from GitHub...");
+      const files = await getLibraryFileList();
+      log(`[NimParser] Found ${files.length} library files`);
+      const signatures = /* @__PURE__ */ new Map();
+      let done = 0;
+      for (const file of files) {
+        const moduleName = file.name.replace(/\.nim$/, "");
+        try {
+          const source = await fetchUrl(file.url);
+          const funcs = parseNimFile(source, moduleName);
+          funcs.forEach((f) => {
+            signatures.set(f.name, {
+              signature: f.signature,
+              description: f.description,
+              params: f.params,
+              attrs: f.attrs,
+              returns: f.returns,
+              module: f.module
+            });
+          });
+          done++;
+          log(`[NimParser] Parsed ${file.name}: ${funcs.length} functions (total: ${signatures.size})`);
+          if (onProgress)
+            onProgress(done, files.length, file.name);
+        } catch (err) {
+          log(`[NimParser] Warning: failed to parse ${file.name}: ${err.message}`);
+          done++;
+        }
+      }
+      log(`[NimParser] Complete. ${signatures.size} functions extracted from ${done} files.`);
+      return signatures;
+    }
+    function parseNimSource(source, moduleName = "unknown") {
+      const funcs = parseNimFile(source, moduleName);
+      const signatures = /* @__PURE__ */ new Map();
+      funcs.forEach((f) => {
+        signatures.set(f.name, {
+          signature: f.signature,
+          description: f.description,
+          params: f.params,
+          attrs: f.attrs,
+          returns: f.returns,
+          module: f.module
+        });
+      });
+      return signatures;
+    }
+    module2.exports = { parseLibraryFromGitHub, parseNimSource };
+  }
+});
+
 // lib/signature-indexer.js
 var require_signature_indexer = __commonJS({
   "lib/signature-indexer.js"(exports2, module2) {
     var fs = require("fs");
     var path = require("path");
     var https = require("https");
+    var { parseLibraryFromGitHub } = require_nim_parser();
     var SignatureIndexer2 = class {
       constructor(logger) {
         this.logger = logger || console;
@@ -9204,6 +9494,8 @@ var require_signature_indexer = __commonJS({
             this.logger.log("[SignatureIndexer] Cache is fresh, skipping update");
             return;
           }
+        } else {
+          this.logger.log("[SignatureIndexer] No prior full fetch \u2014 will fetch now");
         }
         this.updateInProgress = true;
         this.logger.log("[SignatureIndexer] Starting background update...");
@@ -9233,119 +9525,12 @@ var require_signature_indexer = __commonJS({
         }
       }
       /**
-       * Fetch signatures from Arturo documentation
+       * Fetch and parse all signatures from Arturo's GitHub source using the Nim parser.
        */
       async fetchSignaturesFromDocs() {
-        const signatures = /* @__PURE__ */ new Map();
-        try {
-          const libraryMd = await this.fetchUrl(this.docSources[0]);
-          const parsed = this.parseLibraryMarkdown(libraryMd);
-          parsed.forEach((sig, name) => signatures.set(name, sig));
-          this.logger.log(`[SignatureIndexer] Parsed ${signatures.size} signatures from documentation`);
-        } catch (err) {
-          this.logger.log(`[SignatureIndexer] Failed to fetch from docs: ${err.message}`);
-        }
-        return signatures;
-      }
-      /**
-       * Fetch URL content via HTTPS
-       */
-      fetchUrl(url) {
-        return new Promise((resolve, reject) => {
-          https.get(url, { timeout: 1e4 }, (res) => {
-            if (res.statusCode !== 200) {
-              reject(new Error(`HTTP ${res.statusCode}`));
-              return;
-            }
-            let data = "";
-            res.on("data", (chunk) => data += chunk);
-            res.on("end", () => resolve(data));
-          }).on("error", reject).on("timeout", () => {
-            reject(new Error("Request timeout"));
-          });
-        });
-      }
-      /**
-       * Parse Arturo library markdown to extract function signatures
-       * 
-       * Format in library.md:
-       * ## functionName
-       * **Signature**: `functionName param1 :type1 param2 :type2 -> :returnType`
-       * **Description**: Description text
-       */
-      parseLibraryMarkdown(markdown) {
-        const signatures = /* @__PURE__ */ new Map();
-        const lines = markdown.split("\n");
-        let currentFunc = null;
-        let currentSig = null;
-        let currentDesc = null;
-        for (let i = 0; i < lines.length; i++) {
-          const line = lines[i].trim();
-          if (line.startsWith("## ") && !line.startsWith("## ")) {
-            if (currentFunc && currentSig) {
-              signatures.set(currentFunc, {
-                signature: currentSig,
-                description: currentDesc || "",
-                params: this.parseParams(currentSig),
-                returns: this.parseReturnType(currentSig)
-              });
-            }
-            currentFunc = line.substring(3).trim();
-            currentSig = null;
-            currentDesc = null;
-          } else if (line.includes("**Signature**:")) {
-            const match = line.match(/`([^`]+)`/);
-            if (match) {
-              currentSig = match[1];
-            }
-          } else if (line.includes("**Description**:")) {
-            currentDesc = line.split("**Description**:")[1].trim();
-          }
-        }
-        if (currentFunc && currentSig) {
-          signatures.set(currentFunc, {
-            signature: currentSig,
-            description: currentDesc || "",
-            params: this.parseParams(currentSig),
-            returns: this.parseReturnType(currentSig)
-          });
-        }
-        return signatures;
-      }
-      /**
-       * Parse parameters from a signature string
-       * Example: "print value :any -> :null" => [{ name: 'value', type: ':any' }]
-       */
-      parseParams(signature) {
-        const params = [];
-        const parts = signature.split("->");
-        if (parts.length === 0)
-          return params;
-        const paramPart = parts[0].trim();
-        const tokens = paramPart.split(/\s+/);
-        if (tokens.length < 2)
-          return params;
-        for (let i = 1; i < tokens.length; i++) {
-          const token = tokens[i];
-          if (token.startsWith(":")) {
-            if (params.length > 0) {
-              params[params.length - 1].type = token;
-            }
-          } else {
-            params.push({ name: token, type: ":any" });
-          }
-        }
-        return params;
-      }
-      /**
-       * Parse return type from signature string
-       * Example: "print value :any -> :null" => ":null"
-       */
-      parseReturnType(signature) {
-        const parts = signature.split("->");
-        if (parts.length < 2)
-          return ":any";
-        return parts[1].trim();
+        return parseLibraryFromGitHub(
+          (msg) => this.logger.log(msg)
+        );
       }
       /**
        * Save signatures to cache file
@@ -9383,6 +9568,23 @@ var require_signature_indexer = __commonJS({
        */
       hasFunction(functionName) {
         return this.signatures.has(functionName);
+      }
+      /**
+       * Get all known attribute names derived from loaded signatures.
+       * Walks every signature's attrs array and collects the names.
+       * Returns a Set<string> so callers can do O(1) lookups.
+       */
+      getAllAttrNames() {
+        const attrs = /* @__PURE__ */ new Set();
+        for (const sig of this.signatures.values()) {
+          if (Array.isArray(sig.attrs)) {
+            for (const attr of sig.attrs) {
+              if (attr.name)
+                attrs.add(attr.name);
+            }
+          }
+        }
+        return attrs;
       }
       /**
        * Add a custom signature (for user-defined functions)
@@ -9468,6 +9670,11 @@ function getFunctionInfo(functionName) {
   if (indexedSig)
     return indexedSig;
   return BUILTIN_FUNCTIONS[functionName] || null;
+}
+function isKnownAttribute(word) {
+  if (ATTRIBUTE_NAMES.has(word))
+    return true;
+  return signatureIndexer.getAllAttrNames().has(word);
 }
 connection.onInitialize((params) => {
   const capabilities = params.capabilities;
@@ -10386,6 +10593,23 @@ var ATTRIBUTE_NAMES = /* @__PURE__ */ new Set([
   "sql",
   "markdown",
   "text",
+  // Hash/digest algorithm attributes
+  "md5",
+  "sha1",
+  "sha256",
+  "sha384",
+  "sha512",
+  "sha3",
+  "blake2",
+  "crc32",
+  // Encoding format attributes
+  "base64",
+  "base58",
+  "hex",
+  "url",
+  "utf8",
+  "ascii",
+  "binary",
   // HTTP method attributes
   "get",
   "post",
@@ -11485,7 +11709,7 @@ async function validateTextDocument(document) {
         }
       }
       if (wordIndex > 0 && line[wordIndex - 1] === ".") {
-        if (ATTRIBUTE_NAMES.has(word)) {
+        if (isKnownAttribute(word)) {
           return;
         }
       }
@@ -11661,7 +11885,7 @@ connection.onHover((params) => {
   connection.console.log(`Hover: Found word '${word}'`);
   const charBeforeWord = beforeCursor[beforeCursor.length - wordBefore.length - 1];
   if (charBeforeWord === ".") {
-    if (ATTRIBUTE_NAMES.has(word)) {
+    if (isKnownAttribute(word)) {
       return {
         contents: {
           kind: MarkupKind.Markdown,
@@ -11734,6 +11958,21 @@ Type: \`${funcInfo.type}\``
         }
       };
     }
+  }
+  const indexedInfo = signatureIndexer.getSignature(word);
+  if (indexedInfo) {
+    return {
+      contents: {
+        kind: MarkupKind.Markdown,
+        value: `**${word}** (builtin)
+
+${indexedInfo.description}
+
+\`\`\`arturo
+${indexedInfo.signature}
+\`\`\``
+      }
+    };
   }
   connection.console.log(`Hover: No info found for '${word}'`);
   return null;
