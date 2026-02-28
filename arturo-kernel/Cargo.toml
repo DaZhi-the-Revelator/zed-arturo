@@ -9,25 +9,22 @@ name = "arturo-kernel"
 path = "src/main.rs"
 
 [dependencies]
-# Pure-Rust ZeroMQ — no libzmq C library required, critical for portability
-zeromq = { version = "0.4", features = ["tokio-runtime"] }
+# ZeroMQ — same crate used by v-kernel, bundles libzmq on Windows (no system dep needed)
+zmq = "0.10"
 
-# Async runtime
-tokio = { version = "1", features = ["full"] }
+# JSON serialisation for Jupyter wire protocol
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 
 # HMAC-SHA256 message signing (required by Jupyter wire protocol)
 hmac = "0.12"
 sha2 = "0.10"
 hex = "0.4"
 
-# JSON serialisation for Jupyter wire protocol
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-
-# UUID for message IDs and session IDs
+# UUIDs for message IDs and session IDs
 uuid = { version = "1", features = ["v4"] }
 
-# Timestamps for message headers
+# Timestamp for message headers
 chrono = { version = "0.4", features = ["clock"] }
 
 # Error handling
