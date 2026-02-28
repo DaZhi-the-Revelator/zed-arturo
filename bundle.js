@@ -498,7 +498,8 @@ function buildSignature(name, params, returns) {
  *     module:      string,   // filename without .nim
  *   }
  */
-function parseNimFile(source, moduleName) {
+function parseNimFile(source, moduleName, log) {
+    log = log || (() => {});
     const lines  = source.split('\n');
     const result = [];
 
@@ -562,7 +563,38 @@ function parseNimFile(source, moduleName) {
                 continue;
             }
 
-            // ── description ─────────────────────────────────────────────
+            // ── description (single-line or triple-quoted) ─────────────────
+            // Triple-quoted: description = """
+            //     multi-line text
+            // """,
+            const descTriple = fl.match(/^\s+description\s*=\s*"""/);
+            if (descTriple) {
+                const sameLine = fl.match(/"""(.+?)"""/);
+                if (sameLine) {
+                    description = sameLine[1].trim();
+                    i++;
+                } else {
+                    const parts = [];
+                    const afterOpen = fl.replace(/^\s+description\s*=\s*"""/, '').trim();
+                    if (afterOpen) parts.push(afterOpen);
+                    i++;
+                    while (i < lines.length) {
+                        const dl = lines[i];
+                        const endIdx = dl.indexOf('"""');
+                        if (endIdx !== -1) {
+                            const before = dl.substring(0, endIdx).trim();
+                            if (before) parts.push(before);
+                            i++;
+                            break;
+                        }
+                        const trimmed = dl.trim();
+                        if (trimmed) parts.push(trimmed);
+                        i++;
+                    }
+                    description = parts.join(' ').trim();
+                }
+                continue;
+            }
             const descMatch = fl.match(/^\s+description\s*=\s*"((?:[^"\\]|\\.)*)"/);
             if (descMatch) {
                 description = descMatch[1].replace(/\\"/g, '"');
@@ -656,6 +688,10 @@ function parseNimFile(source, moduleName) {
                     description: m[3],
                 });
             }
+            // Log if we got rawAttrs but parsed no attrs (regex mismatch diagnostic)
+            if (attrs.length === 0 && rawAttrs.trim().length > 10) {
+                log(`[NimParser] WARNING: ${funcName} has attrs block but 0 attrs parsed. rawAttrs snippet: ${rawAttrs.replace(/\n/g,' ').slice(0,200)}`);
+            }
         }
 
         // Returns
@@ -663,6 +699,7 @@ function parseNimFile(source, moduleName) {
 
         // Skip if we got no description (probably a malformed/internal entry)
         if (!description) {
+            log(`[NimParser] Skipping ${funcName} in ${moduleName}: no description found`);
             continue;
         }
 
@@ -783,7 +820,7 @@ async function parseLibraryFromGitHub(logger, knownSHAs, existingSignatures, onP
         const moduleName = file.name.replace(/\.nim$/, '');
         try {
             const source = await fetchUrl(file.url);
-            const funcs  = parseNimFile(source, moduleName);
+            const funcs  = parseNimFile(source, moduleName, log);
 
             funcs.forEach(f => {
                 signatures.set(f.name, {
@@ -815,8 +852,8 @@ async function parseLibraryFromGitHub(logger, knownSHAs, existingSignatures, onP
  * Parse a single .nim source string (for testing or offline use).
  * Returns the same Map format as parseLibraryFromGitHub.
  */
-function parseNimSource(source, moduleName = 'unknown') {
-    const funcs = parseNimFile(source, moduleName);
+function parseNimSource(source, moduleName = 'unknown', log) {
+    const funcs = parseNimFile(source, moduleName, log);
     const signatures = new Map();
     funcs.forEach(f => {
         signatures.set(f.name, {
@@ -859,9 +896,14 @@ class SignatureIndexer {
     constructor(logger) {
         this.logger = logger || console;
         this.signatures = new Map();
-        this.cacheDir = path.join(__dirname, '..', '.cache');
-        this.cacheFile = path.join(this.cacheDir, 'signatures.json');
-        this.seedCacheFile = path.join(__dirname, '..', 'seed-cache.json');
+        // When running from bundle.js, __dirname is the extension work dir.
+        // When running directly from source (dev), __dirname is lib/, so go up.
+        // We detect bundle mode by checking if we're a single flat file (no lib subdir).
+        const isBundle = !__dirname.endsWith('lib');
+        const baseDir  = isBundle ? __dirname : path.join(__dirname, '..');
+        this.cacheDir      = path.join(baseDir, '.cache');
+        this.cacheFile     = path.join(this.cacheDir, 'signatures.json');
+        this.seedCacheFile = path.join(baseDir, 'seed-cache.json');
         this.isInitialized = false;
         this.lastUpdate = null;
         this.updateInProgress = false;
@@ -956,10 +998,11 @@ class SignatureIndexer {
 
         this.fetchAndUpdateSignatures()
             .then(() => {
-                this.logger.log('[SignatureIndexer] Background update completed successfully');
+                this.logger.log(`[SignatureIndexer] Background update completed. Total signatures: ${this.signatures.size}`);
             })
             .catch(err => {
-                this.logger.log(`[SignatureIndexer] Background update failed: ${err.message}`);
+                this.logger.log(`[SignatureIndexer] Background update FAILED: ${err.message}`);
+                this.logger.log(`[SignatureIndexer] Stack: ${err.stack}`);
             })
             .finally(() => {
                 this.updateInProgress = false;
@@ -12846,6 +12889,7 @@ let enableFormatting = true;
 let enableHighlights = true;
 
 // Initialize signature indexer (stale-while-revalidate, offline-first)
+console.log('[arturo-lsp] bundle.js build date: ' + new Date().toISOString().slice(0,10) + ' — DSG active');
 const signatureIndexer = new SignatureIndexer(console);
 
 // Completion ranker — stateless, one instance reused for all requests
@@ -13060,8 +13104,12 @@ connection.onDidChangeConfiguration(async (change) => {
         }
         
         if (!arturoSettings) {
-            connection.console.log('ERROR: Could not find arturo settings in any expected path!');
-            connection.console.log(`Available keys in settings: ${Object.keys(settings).join(', ')}`);
+            // Empty settings object is normal when Zed sends a config change
+            // with no arturo-specific keys — silently ignore it.
+            if (Object.keys(settings).length > 0) {
+                connection.console.log('WARNING: Could not find arturo settings in any expected path.');
+                connection.console.log(`Available keys in settings: ${Object.keys(settings).join(', ')}`);
+            }
         }
         
         if (arturoSettings) {
@@ -14377,8 +14425,12 @@ async function validateTextDocument(document) {
                 return;
             }
             
-            // Skip if it's a builtin or defined symbol
+            // Skip if it's a builtin or defined symbol.
+            // Also check the live signature indexer — functions like sha256, md5,
+            // cumSum, transpose are only known after a successful GitHub fetch
+            // and are not in the static BUILTIN_NAMES set.
             if (BUILTIN_NAMES.has(word) || 
+                signatureIndexer.hasFunction(word) ||
                 symbols.variables.has(word) || 
                 symbols.functions.has(word)) {
                 return;
@@ -14780,6 +14832,38 @@ connection.onHover((params) => {
             contents: {
                 kind: MarkupKind.Markdown,
                 value: `**${word}** (user function) — ${location}\n\n${userFunc.description}\n\n\`\`\`arturo\n${userFunc.signature}\n\`\`\``
+            }
+        };
+    }
+
+    // Last chance: check if the word is a known attribute name.
+    // In Arturo some builtins (sha256, md5, sha1, etc.) surface as
+    // attribute selectors on functions like `digest`. Show useful info
+    // rather than nothing when hovering them standalone.
+    if (isKnownAttribute(word)) {
+        // Try to find which function(s) expose this attribute
+        const hostFunctions = [];
+        for (const [fname, sig] of signatureIndexer.signatures) {
+            if (Array.isArray(sig.attrs) && sig.attrs.some(a => a.name === word)) {
+                const attrInfo = sig.attrs.find(a => a.name === word);
+                hostFunctions.push({ fname, attrInfo });
+            }
+        }
+        if (hostFunctions.length > 0) {
+            const { fname, attrInfo } = hostFunctions[0];
+            const attrDesc = attrInfo.description ? `\n\n${attrInfo.description}` : '';
+            return {
+                contents: {
+                    kind: MarkupKind.Markdown,
+                    value: `**\.${word}** (attribute of \`${fname}\`)${attrDesc}\n\nType: \`${attrInfo.type || ':any'}\``
+                }
+            };
+        }
+        // Attribute is in the static set but no indexer entry found
+        return {
+            contents: {
+                kind: MarkupKind.Markdown,
+                value: `**\.${word}** (attribute)\n\nFunction attribute parameter`
             }
         };
     }

@@ -18,9 +18,14 @@ class SignatureIndexer {
     constructor(logger) {
         this.logger = logger || console;
         this.signatures = new Map();
-        this.cacheDir = path.join(__dirname, '..', '.cache');
-        this.cacheFile = path.join(this.cacheDir, 'signatures.json');
-        this.seedCacheFile = path.join(__dirname, '..', 'seed-cache.json');
+        // When running from bundle.js, __dirname is the extension work dir.
+        // When running directly from source (dev), __dirname is lib/, so go up.
+        // We detect bundle mode by checking if we're a single flat file (no lib subdir).
+        const isBundle = !__dirname.endsWith('lib');
+        const baseDir  = isBundle ? __dirname : path.join(__dirname, '..');
+        this.cacheDir      = path.join(baseDir, '.cache');
+        this.cacheFile     = path.join(this.cacheDir, 'signatures.json');
+        this.seedCacheFile = path.join(baseDir, 'seed-cache.json');
         this.isInitialized = false;
         this.lastUpdate = null;
         this.updateInProgress = false;
@@ -115,10 +120,11 @@ class SignatureIndexer {
 
         this.fetchAndUpdateSignatures()
             .then(() => {
-                this.logger.log('[SignatureIndexer] Background update completed successfully');
+                this.logger.log(`[SignatureIndexer] Background update completed. Total signatures: ${this.signatures.size}`);
             })
             .catch(err => {
-                this.logger.log(`[SignatureIndexer] Background update failed: ${err.message}`);
+                this.logger.log(`[SignatureIndexer] Background update FAILED: ${err.message}`);
+                this.logger.log(`[SignatureIndexer] Stack: ${err.stack}`);
             })
             .finally(() => {
                 this.updateInProgress = false;

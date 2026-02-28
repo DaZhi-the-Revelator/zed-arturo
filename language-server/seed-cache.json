@@ -485,6 +485,47 @@
       "description": "Checks if dictionary has key",
       "params": [{ "name": "dict", "type": ":dictionary" }, { "name": "key", "type": ":string" }],
       "returns": ":logical"
+    },
+    "digest": {
+      "signature": "digest value :string/:binary -> :string",
+      "description": "Calculates a hash/digest of the given value. Use attributes to select the algorithm: .sha256 (default), .md5, .sha1, .sha384, .sha512, .sha3, .blake2, .crc32",
+      "params": [{ "name": "value", "type": ":string/:binary" }],
+      "attrs": [
+        { "name": "md5",    "type": ":logical", "description": "use MD5 hashing" },
+        { "name": "sha1",   "type": ":logical", "description": "use SHA1 hashing" },
+        { "name": "sha256", "type": ":logical", "description": "use SHA256 hashing (default)" },
+        { "name": "sha384", "type": ":logical", "description": "use SHA384 hashing" },
+        { "name": "sha512", "type": ":logical", "description": "use SHA512 hashing" },
+        { "name": "sha3",   "type": ":logical", "description": "use SHA3 hashing" },
+        { "name": "blake2", "type": ":logical", "description": "use BLAKE2 hashing" },
+        { "name": "crc32",  "type": ":logical", "description": "use CRC32 checksum" }
+      ],
+      "returns": ":string",
+      "module": "Crypto"
+    },
+    "encode": {
+      "signature": "encode value :string/:binary -> :string",
+      "description": "Encodes the given value. Use .base64, .hex, .url attributes to select encoding.",
+      "params": [{ "name": "value", "type": ":string/:binary" }],
+      "attrs": [
+        { "name": "base64", "type": ":logical", "description": "use Base64 encoding" },
+        { "name": "hex",    "type": ":logical", "description": "use hexadecimal encoding" },
+        { "name": "url",    "type": ":logical", "description": "use URL encoding" }
+      ],
+      "returns": ":string",
+      "module": "Crypto"
+    },
+    "decode": {
+      "signature": "decode value :string -> :string/:binary",
+      "description": "Decodes the given encoded value. Use .base64, .hex, .url attributes to select encoding.",
+      "params": [{ "name": "value", "type": ":string" }],
+      "attrs": [
+        { "name": "base64", "type": ":logical", "description": "decode from Base64" },
+        { "name": "hex",    "type": ":logical", "description": "decode from hexadecimal" },
+        { "name": "url",    "type": ":logical", "description": "decode from URL encoding" }
+      ],
+      "returns": ":string/:binary",
+      "module": "Crypto"
     }
   },
   "lastUpdate": "2025-02-14T00:00:00.000Z",

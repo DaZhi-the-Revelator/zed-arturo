@@ -195,7 +195,8 @@ function buildSignature(name, params, returns) {
  *     module:      string,   // filename without .nim
  *   }
  */
-function parseNimFile(source, moduleName) {
+function parseNimFile(source, moduleName, log) {
+    log = log || (() => {});
     const lines  = source.split('\n');
     const result = [];
 
@@ -259,7 +260,38 @@ function parseNimFile(source, moduleName) {
                 continue;
             }
 
-            // ── description ─────────────────────────────────────────────
+            // ── description (single-line or triple-quoted) ─────────────────
+            // Triple-quoted: description = """
+            //     multi-line text
+            // """,
+            const descTriple = fl.match(/^\s+description\s*=\s*"""/);
+            if (descTriple) {
+                const sameLine = fl.match(/"""(.+?)"""/);
+                if (sameLine) {
+                    description = sameLine[1].trim();
+                    i++;
+                } else {
+                    const parts = [];
+                    const afterOpen = fl.replace(/^\s+description\s*=\s*"""/, '').trim();
+                    if (afterOpen) parts.push(afterOpen);
+                    i++;
+                    while (i < lines.length) {
+                        const dl = lines[i];
+                        const endIdx = dl.indexOf('"""');
+                        if (endIdx !== -1) {
+                            const before = dl.substring(0, endIdx).trim();
+                            if (before) parts.push(before);
+                            i++;
+                            break;
+                        }
+                        const trimmed = dl.trim();
+                        if (trimmed) parts.push(trimmed);
+                        i++;
+                    }
+                    description = parts.join(' ').trim();
+                }
+                continue;
+            }
             const descMatch = fl.match(/^\s+description\s*=\s*"((?:[^"\\]|\\.)*)"/);
             if (descMatch) {
                 description = descMatch[1].replace(/\\"/g, '"');
@@ -353,6 +385,10 @@ function parseNimFile(source, moduleName) {
                     description: m[3],
                 });
             }
+            // Log if we got rawAttrs but parsed no attrs (regex mismatch diagnostic)
+            if (attrs.length === 0 && rawAttrs.trim().length > 10) {
+                log(`[NimParser] WARNING: ${funcName} has attrs block but 0 attrs parsed. rawAttrs snippet: ${rawAttrs.replace(/\n/g,' ').slice(0,200)}`);
+            }
         }
 
         // Returns
@@ -360,6 +396,7 @@ function parseNimFile(source, moduleName) {
 
         // Skip if we got no description (probably a malformed/internal entry)
         if (!description) {
+            log(`[NimParser] Skipping ${funcName} in ${moduleName}: no description found`);
             continue;
         }
 
@@ -480,7 +517,7 @@ async function parseLibraryFromGitHub(logger, knownSHAs, existingSignatures, onP
         const moduleName = file.name.replace(/\.nim$/, '');
         try {
             const source = await fetchUrl(file.url);
-            const funcs  = parseNimFile(source, moduleName);
+            const funcs  = parseNimFile(source, moduleName, log);
 
             funcs.forEach(f => {
                 signatures.set(f.name, {
@@ -512,8 +549,8 @@ async function parseLibraryFromGitHub(logger, knownSHAs, existingSignatures, onP
  * Parse a single .nim source string (for testing or offline use).
  * Returns the same Map format as parseLibraryFromGitHub.
  */
-function parseNimSource(source, moduleName = 'unknown') {
-    const funcs = parseNimFile(source, moduleName);
+function parseNimSource(source, moduleName = 'unknown', log) {
+    const funcs = parseNimFile(source, moduleName, log);
     const signatures = new Map();
     funcs.forEach(f => {
         signatures.set(f.name, {
