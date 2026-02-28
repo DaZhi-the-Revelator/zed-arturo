@@ -9,3 +9,5 @@ src/lib.rs.backup
 language-server/bundle.js
 language-server/node_modules/
 package-lock.json
+build-embedded.bat
+build-embedded.sh

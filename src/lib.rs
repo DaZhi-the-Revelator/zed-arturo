@@ -1,54 +1,27 @@
-/// Zed extension for Arturo programming language
+/// Zed extension for the Arturo programming language
 ///
-/// This extension provides language support for Arturo, including:
-/// - Syntax highlighting via Tree-sitter
-/// - Type checking based on Arturo's type system
-/// - Go-to-definition for functions and variables
-/// - Hover information for types and documentation
-///
-/// # Architecture
-///
-/// The language server is downloaded from npm as `arturo-lsp` and run via Node.js.
+/// Launches the bundled LSP server (language-server/server.js) directly via
+/// the Node.js binary provided by Zed. The path is resolved relative to the
+/// extension's work directory by Zed's host process — no temp file extraction
+/// needed, and this works correctly on all platforms including Windows.
 
 use zed_extension_api::{self as zed, LanguageServerId, Result};
 
-const PACKAGE_NAME: &str = "arturo-lsp";
-const SERVER_PATH: &str = "node_modules/.bin/arturo-lsp";
+/// Path to the LSP entry point, relative to the extension root.
+const SERVER_PATH: &str = "language-server/server.js";
 
-struct ArturoExtension {
-    did_install: bool,
-}
+struct ArturoExtension;
 
 impl zed::Extension for ArturoExtension {
     fn new() -> Self {
-        Self { did_install: false }
+        Self
     }
 
     fn language_server_command(
         &mut self,
-        language_server_id: &LanguageServerId,
-        worktree: &zed::Worktree,
+        _language_server_id: &LanguageServerId,
+        _worktree: &zed::Worktree,
     ) -> Result<zed::Command> {
-        if !self.did_install {
-            zed::set_language_server_installation_status(
-                language_server_id,
-                &zed::LanguageServerInstallationStatus::CheckingForUpdate,
-            );
-
-            let installed_version = zed::npm_package_installed_version(PACKAGE_NAME)?;
-            let latest_version = zed::npm_package_latest_version(PACKAGE_NAME)?;
-
-            if installed_version.as_deref() != Some(&latest_version) {
-                zed::set_language_server_installation_status(
-                    language_server_id,
-                    &zed::LanguageServerInstallationStatus::Downloading,
-                );
-                zed::npm_install_package(PACKAGE_NAME, &latest_version)?;
-            }
-
-            self.did_install = true;
-        }
-
         Ok(zed::Command {
             command: zed::node_binary_path()?,
             args: vec![
@@ -65,9 +38,13 @@ impl zed::Extension for ArturoExtension {
         _worktree: &zed::Worktree,
     ) -> Result<Option<zed::serde_json::Value>> {
         Ok(Some(zed::serde_json::json!({
-            "typeChecking": true,
-            "definitions": true,
-            "hover": true,
+            "settings": {
+                "completion":         "on",
+                "signatures":         "on",
+                "formatting":         "on",
+                "highlights":         "on",
+                "advancedServerLogs": "off"
+            }
         })))
     }
 }

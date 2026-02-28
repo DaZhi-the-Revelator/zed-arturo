@@ -8,7 +8,7 @@ A comprehensive language extension for [Arturo](https://arturo-lang.io/) in [Zed
 
 ## Version
 
-**Current Version**: 2.0
+**Current Version**: 1.0
 
 ## Features
 
@@ -231,30 +231,11 @@ The LSP understands Arturo's complete type system:
 
 ## Installation
 
-### From Zed Extensions
-
 1. Open Zed
 2. Go to Extensions (`Cmd+Shift+X` / `Ctrl+Shift+X`)
 3. Search for "Arturo"
 4. Click "Install"
 
-### Development Installation
-
-1. Clone this repository:
-
-   ```bash
-   git clone https://github.com/DaZhi-the-Revelator/zed-arturo.git
-   cd zed-arturo
-   ```
-
-2. Build the extension:
-
-   ```bash
-   ./build-embedded.bat (Windows)
-   ./Build-embedded.sh (Linux / Mac)
-   ```
-
-3. Install as a dev extension. From the extensions page, click the 'Install Dev Extension' button (or the zed: install dev extension action) and select the directory containing your extension.
 
 ## Requirements
 
@@ -351,8 +332,6 @@ zed-arturo/
 │   ├── kernelspec/
 │   │   └── kernel.json    # Jupyter kernelspec descriptor
 │   ├── Cargo.toml         # Rust dependencies
-│   ├── install.bat        # Windows installer
-│   ├── install.sh         # macOS / Linux installer
 │   └── README.md          # Kernel documentation
 ├── language-server/        # LSP implementation
 │   ├── server.js          # Main LSP server
