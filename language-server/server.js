@@ -74,6 +74,7 @@ const {
 
 const { TextDocument } = require('vscode-languageserver-textdocument');
 const SignatureIndexer = require('./lib/signature-indexer');
+const CompletionRanker = require('./lib/completion-ranker');
 
 // Create a connection for the server
 const connection = createConnection(ProposedFeatures.all);
@@ -93,6 +94,9 @@ let enableHighlights = true;
 
 // Initialize signature indexer (stale-while-revalidate, offline-first)
 const signatureIndexer = new SignatureIndexer(console);
+
+// Completion ranker — stateless, one instance reused for all requests
+const completionRanker = new CompletionRanker();
 signatureIndexer.initialize().catch(err => {
     console.error('[SignatureIndexer] Initialization error:', err);
 });
@@ -2032,45 +2036,62 @@ connection.onHover((params) => {
 });
 
 connection.onCompletion((params) => {
-    const items = [];
     const document = documents.get(params.textDocument.uri);
-    
-    // Check if we're completing after a dot (attribute completion)
+    const items = [];
+
+    // ── Context-specific completions (dot / colon / backtick / hash) ──────────
+    // These are exact-context triggers — return immediately after building the
+    // context-specific list so the ranker operates on a focused candidate set.
     if (document) {
         const position = params.position;
         const text = document.getText();
         const lines = text.split('\n');
+
         if (position.line < lines.length) {
             const line = lines[position.line];
             const beforeCursor = line.substring(0, position.character);
-            
+
             if (beforeCursor.endsWith('.')) {
-                // Attribute completion
+                // Attribute completion — no further ranking needed, set uniform sortText
                 ATTRIBUTE_NAMES.forEach(attrName => {
                     items.push({
                         label: attrName,
                         kind: CompletionItemKind.Property,
                         detail: 'Attribute',
-                        documentation: `Function attribute: .${attrName}`
+                        documentation: `Function attribute: .${attrName}`,
                     });
                 });
-                return items;
+                signatureIndexer.getAllAttrNames().forEach(attrName => {
+                    if (!ATTRIBUTE_NAMES.has(attrName)) {
+                        items.push({
+                            label: attrName,
+                            kind: CompletionItemKind.Property,
+                            detail: 'Attribute',
+                            documentation: `Function attribute: .${attrName}`,
+                        });
+                    }
+                });
+                // Rank by the partial word after the dot, if any
+                const afterDot = beforeCursor.match(/\.([\w-]*)$/);
+                const attrQuery = afterDot ? afterDot[1] : '';
+                const ctx = completionRanker.buildContext(
+                    document, position,
+                    documentSymbols.get(params.textDocument.uri),
+                    workspaceIndexer
+                );
+                return completionRanker.rank(items, attrQuery, ctx);
             }
-            
-            // Check if we're completing after a colon (type completion)
+
             if (beforeCursor.endsWith(':')) {
-                // Add all types
                 Object.keys(ARTURO_TYPES).forEach(typeName => {
                     const typeInfo = ARTURO_TYPES[typeName];
                     items.push({
                         label: typeName,
                         kind: CompletionItemKind.Class,
                         detail: 'Type',
-                        documentation: typeInfo.description
+                        documentation: typeInfo.description,
                     });
                 });
-                
-                // Add custom types
                 const docTypes = customTypes.get(document.uri);
                 if (docTypes) {
                     docTypes.forEach(typeName => {
@@ -2078,54 +2099,75 @@ connection.onCompletion((params) => {
                             label: typeName,
                             kind: CompletionItemKind.Class,
                             detail: 'Custom Type',
-                            documentation: `User-defined type: ${typeName}`
+                            documentation: `User-defined type: ${typeName}`,
                         });
                     });
                 }
-                return items;
+                const ctx = completionRanker.buildContext(
+                    document, position,
+                    documentSymbols.get(params.textDocument.uri),
+                    workspaceIndexer
+                );
+                return completionRanker.rank(items, '', ctx);
             }
-            
-            // Check if we're completing after a backtick (unit completion)
+
             if (beforeCursor.endsWith('`')) {
                 ARTURO_UNITS.forEach(unitName => {
                     items.push({
                         label: unitName,
                         kind: CompletionItemKind.Unit,
                         detail: 'Unit',
-                        documentation: `Physical unit: \`${unitName}`
+                        documentation: `Physical unit: \`${unitName}`,
                     });
                 });
-                return items;
+                const ctx = completionRanker.buildContext(
+                    document, position,
+                    documentSymbols.get(params.textDocument.uri),
+                    workspaceIndexer
+                );
+                return completionRanker.rank(items, '', ctx);
             }
-            
-            // Check if we're completing after a hash (color completion)
+
             if (beforeCursor.endsWith('#')) {
                 ARTURO_COLORS.forEach(colorName => {
                     items.push({
                         label: colorName,
                         kind: CompletionItemKind.Color,
                         detail: 'Color',
-                        documentation: `Named color: #${colorName}`
+                        documentation: `Named color: #${colorName}`,
                     });
                 });
-                return items;
+                const ctx = completionRanker.buildContext(
+                    document, position,
+                    documentSymbols.get(params.textDocument.uri),
+                    workspaceIndexer
+                );
+                return completionRanker.rank(items, '', ctx);
             }
         }
     }
 
-    // Add all functions from the signature indexer (seed cache + any fetched updates)
+    // ── General completions ───────────────────────────────────────────────────
+
+    // Extract the query (word being typed before the cursor)
+    let query = '';
+    if (document) {
+        const line = document.getText().split('\n')[params.position.line] || '';
+        const beforeCursor = line.substring(0, params.position.character);
+        const m = beforeCursor.match(/[\w-]*$/);
+        query = m ? m[0] : '';
+    }
+
+    // Built-in functions — from indexer first, seed-cache fallback
     signatureIndexer.getAllFunctionNames().forEach(funcName => {
         const funcInfo = signatureIndexer.getSignature(funcName);
         items.push({
             label: funcName,
             kind: CompletionItemKind.Function,
             detail: funcInfo ? funcInfo.signature : 'Builtin function',
-            documentation: funcInfo ? funcInfo.description : 'Arturo builtin function'
+            documentation: funcInfo ? funcInfo.description : 'Arturo builtin function',
         });
     });
-
-    // Fallback: add any BUILTIN_NAMES not yet in the indexer
-    // (covers edge case where indexer failed to initialize)
     BUILTIN_NAMES.forEach(funcName => {
         if (!signatureIndexer.hasFunction(funcName)) {
             const funcInfo = BUILTIN_FUNCTIONS[funcName];
@@ -2133,31 +2175,30 @@ connection.onCompletion((params) => {
                 label: funcName,
                 kind: CompletionItemKind.Function,
                 detail: funcInfo ? funcInfo.signature : 'Builtin function',
-                documentation: funcInfo ? funcInfo.description : 'Arturo builtin function'
+                documentation: funcInfo ? funcInfo.description : 'Arturo builtin function',
             });
         }
     });
 
-    // Add all types
+    // Type annotations
     Object.keys(ARTURO_TYPES).forEach(typeName => {
         const typeInfo = ARTURO_TYPES[typeName];
         items.push({
             label: ':' + typeName,
             kind: CompletionItemKind.Class,
             detail: 'Type',
-            documentation: typeInfo.description
+            documentation: typeInfo.description,
         });
     });
 
-    // Add user-defined symbols — workspace-wide first, then current document
-    // (workspace covers cross-file; current doc covers symbols not yet saved)
+    // Workspace-indexed user symbols
     workspaceIndexer.getAllFunctionNames().forEach(name => {
         const info = workspaceIndexer.getFunctionInfo(name);
         items.push({
             label: name,
             kind: CompletionItemKind.Function,
             detail: info.signature,
-            documentation: `${info.description}\n\n*${info.filePath.split(/[\\/]/).pop()}*`
+            documentation: `${info.description}\n\n*${info.filePath.split(/[\\/]/).pop()}*`,
         });
     });
     workspaceIndexer.getAllVariableNames().forEach(name => {
@@ -2166,10 +2207,11 @@ connection.onCompletion((params) => {
             label: name,
             kind: CompletionItemKind.Variable,
             detail: vr ? vr.type : ':any',
-            documentation: `User-defined variable in *${vr ? vr.filePath.split(/[\\/]/).pop() : '?'}*`
+            documentation: `User-defined variable in *${vr ? vr.filePath.split(/[\\/]/).pop() : '?'}*`,
         });
     });
 
+    // Current-document symbols not yet saved to the workspace index
     if (document) {
         const symbols = documentSymbols.get(params.textDocument.uri);
         if (symbols) {
@@ -2179,24 +2221,23 @@ connection.onCompletion((params) => {
                         label: name,
                         kind: CompletionItemKind.Variable,
                         detail: info.type,
-                        documentation: 'User-defined variable'
+                        documentation: 'User-defined variable',
                     });
                 }
             });
-
             symbols.functions.forEach((info, name) => {
                 if (!info.builtin && !workspaceIndexer.hasFunction(name)) {
                     items.push({
                         label: name,
                         kind: CompletionItemKind.Function,
                         detail: info.type,
-                        documentation: 'User-defined function'
+                        documentation: 'User-defined function',
                     });
                 }
             });
         }
-        
-        // Add custom types
+
+        // Custom types
         const docTypes = customTypes.get(document.uri);
         if (docTypes) {
             docTypes.forEach(typeName => {
@@ -2204,13 +2245,20 @@ connection.onCompletion((params) => {
                     label: ':' + typeName,
                     kind: CompletionItemKind.Class,
                     detail: 'Custom Type',
-                    documentation: `User-defined type: ${typeName}`
+                    documentation: `User-defined type: ${typeName}`,
                 });
             });
         }
     }
 
-    return items;
+    // ── Rank and return ───────────────────────────────────────────────────────
+    const ctx = completionRanker.buildContext(
+        document,
+        params.position,
+        document ? documentSymbols.get(params.textDocument.uri) : null,
+        workspaceIndexer
+    );
+    return completionRanker.rank(items, query, ctx);
 });
 
 /**

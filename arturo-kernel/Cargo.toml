@@ -1,0 +1,45 @@
+[package]
+name = "arturo-kernel"
+version = "0.1.0"
+edition = "2021"
+description = "Jupyter kernel for the Arturo programming language"
+
+[[bin]]
+name = "arturo-kernel"
+path = "src/main.rs"
+
+[dependencies]
+# Pure-Rust ZeroMQ — no libzmq C library required, critical for portability
+zeromq = { version = "0.4", features = ["tokio-runtime"] }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# HMAC-SHA256 message signing (required by Jupyter wire protocol)
+hmac = "0.12"
+sha2 = "0.10"
+hex = "0.4"
+
+# JSON serialisation for Jupyter wire protocol
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# UUID for message IDs and session IDs
+uuid = { version = "1", features = ["v4"] }
+
+# Timestamps for message headers
+chrono = { version = "0.4", features = ["clock"] }
+
+# Error handling
+anyhow = "1"
+
+# Platform signal/process APIs for interrupt_request handling
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.52", features = ["Win32_Foundation", "Win32_System_Threading"] }
+
+[profile.release]
+strip = true
+opt-level = 3

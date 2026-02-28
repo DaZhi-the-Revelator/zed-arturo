@@ -1,0 +1,9 @@
+{
+  "argv": ["arturo-kernel", "{connection_file}"],
+  "display_name": "Arturo",
+  "language": "arturo",
+  "interrupt_mode": "signal",
+  "metadata": {
+    "debugger": false
+  }
+}

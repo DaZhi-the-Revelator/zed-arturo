@@ -14,6 +14,17 @@ A comprehensive language extension for [Arturo](https://arturo-lang.io/) in [Zed
 
 Please note Zed keymaps may have changed - use the Command Palette, Keymap and Key Context View when needed
 
+### ✅ REPL / Interactive Evaluation
+
+Full Zed REPL integration via a native Jupyter kernel (`arturo-kernel`):
+
+- Evaluate cells with `Ctrl+Shift+Enter` (Windows/Linux) or `Cmd+Shift+Enter` (macOS)
+- Cell separator: `; %%`
+- Stateful sessions — variables and functions defined in one cell are available in subsequent cells
+- stdout and stderr streamed directly into the REPL panel
+- Interrupt running execution with `Ctrl+C`
+- See `arturo-kernel/README.md` for build and install instructions
+
 ### ✅ Core Language Intelligence
 
 - **Diagnostics**: Comprehensive code validation including:
@@ -334,8 +345,21 @@ Simply open any `.art` file and the extension will provide:
 ```txt
 zed-arturo/
 ├── extension.toml          # Extension metadata
+├── arturo-kernel/          # Jupyter kernel (REPL integration)
+│   ├── src/
+│   │   └── main.rs        # Kernel implementation
+│   ├── kernelspec/
+│   │   └── kernel.json    # Jupyter kernelspec descriptor
+│   ├── Cargo.toml         # Rust dependencies
+│   ├── install.bat        # Windows installer
+│   ├── install.sh         # macOS / Linux installer
+│   └── README.md          # Kernel documentation
 ├── language-server/        # LSP implementation
-│   ├── server.js          # Main LSP server (1900+ lines, all features)
+│   ├── server.js          # Main LSP server
+│   ├── lib/
+│   │   ├── completion-ranker.js   # High-precision completion ranking
+│   │   ├── signature-indexer.js   # Dynamic signature index
+│   │   └── workspace-indexer.js   # Workspace symbol index
 │   ├── package.json       # Node.js dependencies
 │   └── README.md          # LSP documentation
 ├── languages/             # Language configuration
@@ -385,6 +409,15 @@ Contributions are welcome! Please feel free to submit pull requests or open issu
 
 ### v2.0
 
+- 🚀 **NEW: REPL / Interactive Evaluation** - Full Zed REPL integration via `arturo-kernel`, a native Rust Jupyter kernel
+  - Evaluate `.art` cells directly in Zed with `Ctrl+Shift+Enter`
+  - Stateful sessions using preamble accumulation across cells
+  - Implements Jupyter messaging protocol v5.3 over ZeroMQ (pure-Rust `zeromq` crate — no libzmq C dependency)
+  - HMAC-SHA256 message signing, heartbeat, IOPub streaming, shutdown and interrupt handling
+  - Build and install scripts for Windows, macOS, and Linux
+  - GitHub Actions matrix build for five release targets
+  - See `arturo-kernel/` for the full implementation
+
 - 🚀 **NEW: Dynamic Signature Generation** - A self-updating signature index replacing the old static list of 80 manually-defined functions
   - **Coverage**: Expanded from 80 manually-defined functions to 521+ auto-indexed Arturo built-ins
   - **Architecture**: Dedicated `SignatureIndexer` class (`lib/signature-indexer.js`) with full cache lifecycle management
@@ -395,6 +428,18 @@ Contributions are welcome! Please feel free to submit pull requests or open issu
   - **Graceful Degradation**: Falls back to the last known good cache on network failure; falls back to full refresh if delta data is unavailable
   - **Zero Configuration**: Works out of the box with no setup required
   - **Non-Blocking**: Initialization is fully asynchronous with minimal memory footprint
+
+- 🎯 **NEW: High-Precision Completion Ranking** - Completion items are now ranked by a multi-signal scoring model
+  - **Prefix matching**: exact prefix > case-insensitive prefix > substring > acronym (e.g. `sl` matches `sort-list`)
+  - **Origin / kind**: local document symbols rank above workspace symbols, which rank above builtins
+  - **Recency**: symbols used recently near the cursor score higher
+  - **Frequency**: symbols used more often in the document score higher
+  - **Scope proximity**: symbols defined closer to the cursor score higher
+  - **Query length bonus**: longer typed queries reward more specific matches
+  - **`sortText` encoding**: rank is written as an inverted zero-padded score so editors sort correctly without extra client logic
+  - **`preselect`**: the highest-scoring candidate is flagged for automatic selection
+  - **Context-specific ranking**: attribute (`.`), type (`:`), unit (`` ` ``), and colour (`#`) lists are also ranked
+  - Implemented in `lib/completion-ranker.js` — stateless, reused across all requests
 
 - 🔧 **ENHANCEMENT: Feature Toggles** - Added ability to enable/disable LSP features via settings
   - Completions, signatures, formatting, and highlights can be toggled on/off

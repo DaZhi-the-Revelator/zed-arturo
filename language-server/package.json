@@ -1,14 +1,13 @@
 {
-  "name": "@arturo-lang/language-server",
+  "name": "arturo-lsp",
   "version": "0.2.0",
-  "description": "Language Server Protocol implementation for Arturo",
+  "description": "Language Server Protocol implementation for the Arturo programming language",
   "main": "server.js",
   "bin": {
     "arturo-lsp": "./server.js"
   },
   "scripts": {
-    "start": "node server.js",
-    "build": "esbuild server.js --bundle --platform=node --format=cjs --outfile=../bundle.js --external:vscode"
+    "start": "node server.js"
   },
   "keywords": [
     "arturo",
@@ -21,10 +20,10 @@
     "vscode-languageserver": "^9.0.1",
     "vscode-languageserver-textdocument": "^1.0.11"
   },
-  "devDependencies": {
-    "esbuild": "^0.20.0"
-  },
   "engines": {
     "node": ">=14.0.0"
-  }
+  },
+  "files": [
+    "server.js"
+  ]
 }
