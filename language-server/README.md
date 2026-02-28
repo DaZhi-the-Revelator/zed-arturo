@@ -22,7 +22,7 @@ This directory contains the Language Server Protocol (LSP) implementation for Ar
 - **Workspace Symbols**: Global symbol search
 - **Document Highlights**: Automatic symbol highlighting
 - **Code Actions**: Quick fixes and refactorings
-- **Diagnostics**: Real-time error and warning messages
+- **Diagnostics**: Real-time error and warning messages with 500ms debounce to avoid false positives while typing
 
 ## Installation
 

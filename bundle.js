@@ -14056,6 +14056,8 @@ function inferType(value) {
 
     if (/^-?\d+$/.test(value)) return ':integer';
     if (/^-?\d+\.\d+$/.test(value)) return ':floating';
+    if (/^-?\d+(\.\d+)?i$/.test(value)) return ':complex';
+    if (/^-?\d+(\.\d+)?[+\-]\d+(\.\d+)?i$/.test(value)) return ':complex';
     if (/^\d+:\d+$/.test(value)) return ':rational';
     if (/^(true|false|maybe)$/.test(value)) return ':logical';
     if (value === 'null') return ':null';
@@ -14103,7 +14105,10 @@ function isLiteral(word) {
     
     // Single letter literals (for 'c' in char literal context)
     if (/^[a-z]$/.test(word)) return true;
-    
+
+    // Complex number imaginary parts: 2i, 3.14i, 0i
+    if (/^-?\d+(\.\d+)?i$/.test(word)) return true;
+
     return false;
 }
 
@@ -14472,6 +14477,13 @@ async function validateTextDocument(document) {
             if (isInBlockLiteral(line, wordIndex)) {
                 return;
             }
+
+            // Check if word is a base name of a builtin predicate:
+            // e.g. 'some' in 'some?' — the regex also matches the bare
+            // stem because '?' is not a \w character.
+            if (BUILTIN_NAMES.has(word + '?') || signatureIndexer.hasFunction(word + '?')) {
+                return;
+            }
             
             // Check if word is preceded by a quote (literal/symbol)
             if (wordIndex > 0 && line[wordIndex - 1] === "'") {
@@ -14563,10 +14575,28 @@ async function validateTextDocument(document) {
     return diagnostics;
 }
 
+// Debounce map: uri -> timeout handle
+const validateDebounceMap = new Map();
+
 documents.onDidChangeContent(change => {
-    validateTextDocument(change.document).then(diagnostics => {
-        connection.sendDiagnostics({ uri: change.document.uri, diagnostics });
-    });
+    const uri = change.document.uri;
+    // Cancel any pending validation for this document
+    if (validateDebounceMap.has(uri)) {
+        clearTimeout(validateDebounceMap.get(uri));
+    }
+    // Schedule validation after 500ms of inactivity
+    validateDebounceMap.set(uri, setTimeout(() => {
+        validateDebounceMap.delete(uri);
+        validateTextDocument(change.document).then(diagnostics => {
+            connection.sendDiagnostics({ uri, diagnostics });
+        });
+    }, 500));
+});
+
+// Completion resolve handler — required because resolveProvider: true is advertised
+connection.onCompletionResolve((item) => {
+    // Items are already fully populated; nothing more to resolve
+    return item;
 });
 
 connection.onDefinition((params) => {

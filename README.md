@@ -52,7 +52,7 @@ Full Zed REPL integration via a native Jupyter kernel (`arturo-kernel`):
 
 - **Signature Help**: Real-time parameter hints as you type function calls with active parameter tracking, powered by Dynamic Signature Generation (see below) — covers all 521+ built-in Arturo functions plus user-defined functions from your workspace
 
-- **Dynamic Signature Generation**: A self-updating signature index that replaces the old static list of 80 manually-defined functions
+- **Dynamic Signature Generation**: A self-updating signature index that replaces the old static list of embedded functions (see `language-server/seed-cache.json` for the full list of seed functions shipped with the extension)
   - **Signature Indexer (`lib/signature-indexer.js`)**: Core `SignatureIndexer` class with full cache lifecycle management
   - **Stale-While-Revalidate Pattern**: Cache is loaded instantly on startup; background task refreshes it every 24 hours without blocking the editor
   - **Offline-First Design**: Ships with a seed cache of the 80 most popular functions so the extension works perfectly without internet from day one

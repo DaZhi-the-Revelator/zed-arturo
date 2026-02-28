@@ -51,7 +51,7 @@ cargo --version
 
 **3. Python and Jupyter**
 
-If you do not already have Python, download it from [python.org](https://www.python.org/downloads/windows/). During installation, check **Add Python to PATH**. Then install Jupyter:
+If you do not already have Python, download it from [Python.org](https://www.python.org/downloads/windows/). During installation, check **Add Python to PATH**. Then install Jupyter:
 
 ```txt
 pip install jupyter
