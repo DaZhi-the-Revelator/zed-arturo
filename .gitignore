@@ -5,9 +5,13 @@ node_modules/
 .DS_Store
 extension.wasm
 grammars/
+`/src/lib-embedded.rs`
 src/lib.rs.backup
 language-server/bundle.js
 language-server/node_modules/
 package-lock.json
 build-embedded.bat
 build-embedded.sh
+/bundle.js
+/extension.wasm
+/language-server/webpack.config.js
