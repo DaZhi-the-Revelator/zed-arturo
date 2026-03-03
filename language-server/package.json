@@ -1,6 +1,6 @@
 {
   "name": "arturo-lsp",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Language Server Protocol implementation for the Arturo programming language",
   "main": "server.js",
   "bin": {
@@ -30,6 +30,7 @@
   },
   "files": [
     "server.js",
-    "lib/"
+    "lib/",
+    "seed-cache.json"
   ]
 }
