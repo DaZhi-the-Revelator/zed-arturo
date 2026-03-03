@@ -5,7 +5,7 @@ node_modules/
 .DS_Store
 extension.wasm
 grammars/
-`/src/lib-embedded.rs`
+/src/lib-embedded.rs
 src/lib.rs.backup
 language-server/bundle.js
 language-server/node_modules/
