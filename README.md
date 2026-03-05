@@ -241,7 +241,7 @@ The LSP understands Arturo's complete type system:
 
 The extension works out of the box with no configuration required. The LSP starts automatically when you open an `.art` file.
 
-### LSP Feature Toggles (v2.0+)
+### LSP Feature Toggles
 
 You can selectively enable or disable specific LSP features through your Zed `settings.json`:
 
